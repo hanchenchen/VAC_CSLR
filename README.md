@@ -61,7 +61,7 @@ If you find this repo useful in your research works, please consider cite our pa
 
    ```bash
    cd ./preprocess
-   python data_preprocess.py --process-image --multiprocessing
+   python dataset_preprocess.py --process-image --multiprocessing --dataset-root /raid_han/sign-dataset/phoenix2014-release/phoenix-2014-multisigner
    ```
 
 ### Inference
@@ -73,7 +73,7 @@ If you find this repo useful in your research works, please consider cite our pa
 | ResNet18 | 21.2%      | 22.3%       | [[Baidu]](https://pan.baidu.com/s/12WSc2Xhy7LSkLojh1XqY6g) (passwd: qi83)<br />[[Dropbox]](https://www.dropbox.com/s/zbas78emfz5m4bp/resnet18_slr_pretrained_distill25.pt?dl=0)     |
 
 ​	To evaluate the pretrained model, run the command below：   
-`python main.py --load-weights resnet18_slr_pretrained.pt --phase test`
+`python main.py --load-weights checkpoints/resnet18_baseline_dev_23.80_epoch25_model.pt --phase test --config configs/config.yaml`
 
 ​	(When evaluating the SMKD pretrained model,  please modify the weight_norm and share_classifier in config files as True).
 

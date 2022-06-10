@@ -1,0 +1,5 @@
+install/
+checkpoints/
+__pycache__/
+preprocess/phoenix2014/
+work_dir/
