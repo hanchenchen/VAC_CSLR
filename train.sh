@@ -1,4 +1,4 @@
 python main.py  \
---config configs/baseline.yaml  \
---device 0,1 \
---work-dir work-dir/train/00-baseline/
+--config configs/baseline+vac+stmc.yaml  \
+--device 2,3 \
+--work-dir work-dir/train/02-baseline+vac+stmc/
