@@ -58,11 +58,11 @@ class Processor():
             self.recoder.print_log('Model:   {}.'.format(self.arg.model))
             self.recoder.print_log('Weights: {}.'.format(self.arg.load_weights))
             # train_wer = seq_eval(self.arg, self.data_loader["train_eval"], self.model, self.device,
-            #                      "train", 6667, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
+            #                      "train", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
             dev_wer = seq_eval(self.arg, self.data_loader["dev"], self.model, self.device,
-                               "dev", 6667, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
+                               "dev", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
             test_wer = seq_eval(self.arg, self.data_loader["test"], self.model, self.device,
-                                "test", 6667, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
+                                "test", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
             self.recoder.print_log('Evaluation Done.\n')
         elif self.arg.phase == "features":
             for mode in ["train", "dev", "test"]:
@@ -127,6 +127,7 @@ class Processor():
                 else:
                     print('Can Not Remove Weights: {}.'.format(w))
         weights = self.modified_weights(state_dict['model_state_dict'], False)
+        self.epoch = state_dict['epoch']
         # weights = self.modified_weights(state_dict['model_state_dict'])
         model.load_state_dict(weights, strict=True)
 

@@ -3,3 +3,6 @@ checkpoints/
 __pycache__/
 preprocess/phoenix2014/
 work_dir/
+work-dir/
+dataset/phoenix2014
+software
