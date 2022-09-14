@@ -91,6 +91,6 @@ class Decode(object):
             ax.set_ylabel('Probability') #设置y轴名称 y label
             ax.set_title('Probability of glosses') #设置图名为Simple Plot
             ax.legend() #自动检测要在图例中显示的元素，并且显示
-            plt.show() #图形可视化
+            plt.savefig('test.png') #图形可视化
 
         return ret_list
