@@ -6,6 +6,7 @@ import ctcdecode
 import numpy as np
 from itertools import groupby
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 
 class Decode(object):
@@ -63,4 +64,33 @@ class Decode(object):
                 max_result = filtered
             ret_list.append([(self.i2g_dict[int(gloss_id)], idx) for idx, gloss_id in
                              enumerate(max_result)])
+        return ret_list
+
+    def visualize_maxdecode(self, upsampled_nn_output, len_x, x):
+        index_list = torch.argmax(upsampled_nn_output, axis=2)
+        probs = upsampled_nn_output.softmax(-1).cpu()
+        batchsize, lgt = index_list.shape
+        ret_list = []
+        for batch_idx in range(batchsize):
+            group_result = [x[0] for x in groupby(index_list[batch_idx][:len_x[batch_idx].int()])]
+            filtered = [*filter(lambda x: x != self.blank_id, group_result)]
+            if len(filtered) > 0:
+                max_result = torch.stack(filtered)
+                max_result = [x[0] for x in groupby(max_result)]
+            else:
+                max_result = filtered   
+            ret_list.append([(self.i2g_dict[int(gloss_id)], idx) for idx, gloss_id in
+                             enumerate(max_result)])
+            fig, ax = plt.subplots() # 创建图实例
+            x = np.linspace(0,len_x[batch_idx].cpu(),num=len_x[batch_idx].cpu()) # 创建x的取值范围
+            for idx, gloss_id in enumerate(max_result):
+                print(x, len_x[batch_idx].cpu())
+                print(probs[batch_idx,:len_x[batch_idx].int(),gloss_id])
+                ax.plot(x, probs[batch_idx,:len_x[batch_idx].int(),gloss_id], label=self.i2g_dict[int(gloss_id)]) # 作y1 = x 图，并标记此线名为linear
+            ax.set_xlabel('Frame') #设置x轴名称 x label
+            ax.set_ylabel('Probability') #设置y轴名称 y label
+            ax.set_title('Probability of glosses') #设置图名为Simple Plot
+            ax.legend() #自动检测要在图例中显示的元素，并且显示
+            plt.show() #图形可视化
+
         return ret_list

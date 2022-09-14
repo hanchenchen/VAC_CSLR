@@ -86,21 +86,25 @@ class SLRModel(nn.Module):
         else:
             # frame-wise features
             framewise = x
-
+            
         conv1d_outputs = self.conv1d(framewise, len_x)
         # x: T, B, C
-        x = conv1d_outputs['visual_feat']
+        visual_feat = conv1d_outputs['visual_feat']
         lgt = conv1d_outputs['feat_len']
-        tm_outputs = self.temporal_model(x, lgt)
+        tm_outputs = self.temporal_model(visual_feat, lgt)
         outputs = self.classifier(tm_outputs['predictions'])
         pred = None if self.training \
             else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
         conv_pred = None if self.training \
             else self.decoder.decode(conv1d_outputs['conv_logits'], lgt, batch_first=False, probs=False)
-
+        
+        print((batch, temp, self.num_classes), (outputs.shape, len_x))
+        upsampled = F.interpolate(outputs.permute(1, 0, 2).unsqueeze(0), size=(temp, self.num_classes), mode='bilinear', align_corners=True).squeeze(0)
+        self.decoder.visualize_maxdecode(upsampled, len_x, x)
+        exit()
         return {
             "framewise_features": framewise,
-            "visual_features": x,
+            "visual_features": visual_feat,
             "feat_len": lgt,
             "conv_logits": conv1d_outputs['conv_logits'],
             "sequence_logits": outputs,
