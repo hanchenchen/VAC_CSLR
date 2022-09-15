@@ -6,3 +6,5 @@ work_dir/
 work-dir/
 dataset/phoenix2014
 software
+*.png
+wandb/

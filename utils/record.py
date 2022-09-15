@@ -1,14 +1,29 @@
 import pdb
 import time
+import datetime
+import pytz
+import wandb
+
+tz = pytz.timezone('Asia/Shanghai') #东八区
 
 
 class Recorder(object):
-    def __init__(self, work_dir, print_log, log_interval):
+    def __init__(self, work_dir, print_log, log_interval, _config={}):
         self.cur_time = time.time()
         self.print_log_flag = print_log
         self.log_interval = log_interval
         self.log_path = '{}/log.txt'.format(work_dir)
         self.timer = dict(dataloader=0.001, device=0.001, forward=0.001, backward=0.001)
+        print(f"{_config.config.split('/')[-1][:-5]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5]}")
+        wandb.init(
+            name=f"{_config.config.split('/')[-1][:-5]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5]}",
+            project="sclr",
+            entity="hanchenchen",
+            config=_config,
+            id=wandb.util.generate_id(),
+            group="resnet+bilstm", 
+            job_type="gpu=2, bs=2"
+            )
 
     def print_time(self):
         localtime = time.asctime(time.localtime(time.time()))
@@ -18,7 +33,8 @@ class Recorder(object):
         if path is None:
             path = self.log_path
         if print_time:
-            localtime = time.asctime(time.localtime(time.time()))
+            localtime = datetime.datetime.fromtimestamp(int(time.time()), pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')
+            # localtime = time.asctime(time.localtime(time.time()))
             str = "[ " + localtime + ' ] ' + str
         print(str)
         if self.print_log_flag:
@@ -49,3 +65,6 @@ class Recorder(object):
         self.print_log(
             '\tTime consumption: [Data]{dataloader}, [GPU]{device}, [Forward]{forward}, [Backward]{backward}'.format(
                 **proportion))
+
+    def print_wandb(self, cont):
+        wandb.log(cont)

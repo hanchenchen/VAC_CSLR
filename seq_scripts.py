@@ -34,8 +34,18 @@ def seq_train(loader, model, optimizer, device, epoch_idx, recoder):
             recoder.print_log(
                 '\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:.6f}'
                     .format(epoch_idx, batch_idx, len(loader), loss.item(), clr[0]))
+            self.recoder.print_wandb({
+                'epoch': epoch_idx,
+                'step': epoch_idx*len(loader) + batch_idx,
+                'Loss': loss.item(),
+                'lr': clr[0],
+                })
     optimizer.scheduler.step()
     recoder.print_log('\tMean training loss: {:.10f}.'.format(np.mean(loss_value)))
+    self.recoder.print_wandb({
+        'epoch': epoch_idx,
+        'Mean training loss': np.mean(loss_value),
+        })
     return loss_value
 
 

@@ -26,7 +26,7 @@ class Processor():
         if self.arg.random_fix:
             self.rng = utils.RandomState(seed=self.arg.random_seed)
         self.device = utils.GpuDataParallel()
-        self.recoder = utils.Recorder(self.arg.work_dir, self.arg.print_log, self.arg.log_interval)
+        self.recoder = utils.Recorder(self.arg.work_dir, self.arg.print_log, self.arg.log_interval, self.arg)
         self.dataset = {}
         self.data_loader = {}
         self.gloss_dict = np.load(self.arg.dataset_info['dict_path'], allow_pickle=True).item()
@@ -47,6 +47,11 @@ class Processor():
                     dev_wer = seq_eval(self.arg, self.data_loader['dev'], self.model, self.device,
                                        'dev', epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
                     self.recoder.print_log("Dev WER: {:05.2f}%".format(dev_wer))
+                    self.recoder.print_wandb({
+                        'epoch': epoch,
+                        'Dev WER': dev_wer,
+                        })
+                    
                 if save_model:
                     model_path = "{}dev_{:05.2f}_epoch{}_model.pt".format(self.arg.work_dir, dev_wer, epoch)
                     seq_model_list.append(model_path)
@@ -155,7 +160,7 @@ class Processor():
             optimizer.scheduler.load_state_dict(state_dict["scheduler_state_dict"])
 
         self.arg.optimizer_args['start_epoch'] = state_dict["epoch"] + 1
-        self.recoder.print_log("Resuming from checkpoint: epoch {self.arg.optimizer_args['start_epoch']}")
+        self.recoder.print_log(f"Resuming from checkpoint: epoch {self.arg.optimizer_args['start_epoch']}")
 
     def load_data(self):
         print("Loading data")
