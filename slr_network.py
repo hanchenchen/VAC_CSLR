@@ -100,7 +100,8 @@ class SLRModel(nn.Module):
         
         print((batch, temp, self.num_classes), (outputs.shape, len_x))
         upsampled = F.interpolate(outputs.permute(1, 0, 2).unsqueeze(0), size=(temp, self.num_classes), mode='bilinear', align_corners=True).squeeze(0)
-        self.decoder.visualize_maxdecode(upsampled, len_x, x)
+        self.decoder.visualize_maxdecode(outputs.permute(1, 0, 2), lgt, x, label, label_lgt)
+        self.decoder.visualize_maxdecode(outputs.permute(1, 0, 2), lgt, x)
         exit()
         return {
             "framewise_features": framewise,

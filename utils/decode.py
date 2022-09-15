@@ -66,7 +66,7 @@ class Decode(object):
                              enumerate(max_result)])
         return ret_list
 
-    def visualize_maxdecode(self, upsampled_nn_output, len_x, x):
+    def visualize_maxdecode(self, upsampled_nn_output, len_x, x, label=None, label_lgt=None):
         index_list = torch.argmax(upsampled_nn_output, axis=2)
         probs = upsampled_nn_output.softmax(-1).cpu()
         batchsize, lgt = index_list.shape
@@ -81,16 +81,32 @@ class Decode(object):
                 max_result = filtered   
             ret_list.append([(self.i2g_dict[int(gloss_id)], idx) for idx, gloss_id in
                              enumerate(max_result)])
-            fig, ax = plt.subplots() # 创建图实例
-            x = np.linspace(0,len_x[batch_idx].cpu(),num=len_x[batch_idx].cpu()) # 创建x的取值范围
+            x = np.linspace(0,len_x[batch_idx].int().cpu(),num=len_x[batch_idx].int().cpu()) # 创建x的取值范围
+            max_result = label[label_lgt[:batch_idx].sum():label_lgt[:batch_idx+1].sum()].tolist() if label is not None else max_result
+            fig, ax = plt.subplots(len(max_result)+1, 1, sharex='col', sharey='row')
+            
+            fig.set_size_inches(18, 25)
+            ax[0].set_xlabel('Frame') #设置x轴名称 x label
+            ax[0].set_ylabel('Probability') #设置y轴名称 y label
+            ax[0].set_title('Probability of glosses') #设置图名为Simple Plot
+            plt.cm.get_cmap('rainbow_r')
+            color_list = plt.cm.Set3(np.linspace(0, 1, len(max_result)))
+            print(batch_idx, label, max_result, probs.max())
             for idx, gloss_id in enumerate(max_result):
-                print(x, len_x[batch_idx].cpu())
-                print(probs[batch_idx,:len_x[batch_idx].int(),gloss_id])
-                ax.plot(x, probs[batch_idx,:len_x[batch_idx].int(),gloss_id], label=self.i2g_dict[int(gloss_id)]) # 作y1 = x 图，并标记此线名为linear
-            ax.set_xlabel('Frame') #设置x轴名称 x label
-            ax.set_ylabel('Probability') #设置y轴名称 y label
-            ax.set_title('Probability of glosses') #设置图名为Simple Plot
-            ax.legend() #自动检测要在图例中显示的元素，并且显示
-            plt.savefig('test.png') #图形可视化
+                ax[0].plot(x, probs[batch_idx,:len_x[batch_idx].int(),gloss_id], 
+                label=self.i2g_dict[int(gloss_id)],
+                color=color_list[idx], 
+                linewidth=3) # 作y1 = x 图，并标记此线名为linear
+                ax[idx+1].set_ylim((0, 1.5))
+                ax[idx+1].bar(x, probs[batch_idx,:len_x[batch_idx].int(),gloss_id], 
+                label=self.i2g_dict[int(gloss_id)],
+                color=color_list[idx]) # 作y1 = x 图，并标记此线名为linear
+                # ax[idx+1].set_xlabel(f'{self.i2g_dict[int(gloss_id)]}, {int(gloss_id)}') #设置图名为Simple Plot
+                ax[idx+1].legend() #设置图名为Simple Plot
+            # fig.legend() #自动检测要在图例中显示的元素，并且显示
+            fig.tight_layout()#调整整体空白
+            plt.subplots_adjust(wspace =0, hspace =0)#调整子图间距
+            plt.savefig(f'test{batch_idx}-{label is not None}.png') #图形可视化
+            plt.clf()
 
         return ret_list
