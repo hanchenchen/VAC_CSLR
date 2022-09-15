@@ -106,7 +106,7 @@ class Decode(object):
             # fig.legend() #自动检测要在图例中显示的元素，并且显示
             fig.tight_layout()#调整整体空白
             plt.subplots_adjust(wspace =0, hspace =0)#调整子图间距
-            plt.savefig(f'test{batch_idx}-{label is not None}.png') #图形可视化
+            plt.savefig(f'visualization/00-baseline/{batch_idx}-{label is not None}.png') #图形可视化
             plt.clf()
 
         return ret_list
