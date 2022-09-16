@@ -21,7 +21,7 @@ class Recorder(object):
             entity="hanchenchen",
             config=_config,
             id=wandb.util.generate_id(),
-            group="resnet+bilstm", 
+            group="video-swin+bilstm", 
             job_type="gpu=2, bs=2"
             )
 
