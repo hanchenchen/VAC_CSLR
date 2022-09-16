@@ -37,7 +37,7 @@ class BiLSTMLayer(nn.Module):
             - hidden : (num_layers, batch_size, hidden_size * num_directions)
         """
         # (max_src_len, batch_size, D)
-        packed_emb = nn.utils.rnn.pack_padded_sequence(src_feats, src_lens)
+        packed_emb = nn.utils.rnn.pack_padded_sequence(src_feats, src_lens.cpu())
 
         # rnn(gru) returns:
         # - packed_outputs: shape same as packed_emb

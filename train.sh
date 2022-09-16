@@ -1,4 +1,4 @@
 python main.py  \
---config configs/baseline+vac+stmc.yaml  \
+--config configs/04-02-video-swin.yaml  \
 --device 2,3 \
---work-dir work-dir/train/02-baseline+vac+stmc/
+--work-dir work-dir/train/04-02-video-swin/

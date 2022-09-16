@@ -6,10 +6,12 @@ import types
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 import torchvision.models as models
+from transformers import BertModel, BertConfig
 from modules.criterions import SeqKD
 from modules import BiLSTMLayer, TemporalConv
-
+from modules.video_swin_transformer import SwinTransformer3D
 
 class Identity(nn.Module):
     def __init__(self):
@@ -42,24 +44,43 @@ class SLRModel(nn.Module):
         self.criterion_init()
         self.num_classes = num_classes
         self.loss_weights = loss_weights
-        self.conv2d = getattr(models, c2d_type)(pretrained=True)
-        self.conv2d.fc = Identity()
-        self.conv1d = TemporalConv(input_size=512,
-                                   hidden_size=hidden_size,
-                                   conv_type=conv_type,
-                                   use_bn=use_bn,
-                                   num_classes=num_classes)
+        self.video_swin = SwinTransformer3D(
+            pretrained='checkpoints/swin/swin_tiny_patch244_window877_kinetics400_1k.pth',
+            pretrained2d=False,
+            patch_size=(2,4,4),
+            embed_dim=96,
+            depths=[2, 2, 6, 2],
+            num_heads=[3, 6, 12, 24],
+            window_size=(8,7,7),
+            mlp_ratio=4.,
+            qkv_bias=True,
+            qk_scale=None,
+            drop_rate=0.,
+            attn_drop_rate=0.,
+            drop_path_rate=0.2,
+            patch_norm=True
+        )
+        self.video_swin.init_weights()
+        self.swin_head = nn.Linear(37632, hidden_size)
+        
+        # self.conv2d = getattr(models, c2d_type)(pretrained=True)
+        # self.conv2d.fc = Identity()
+        # self.conv1d = TemporalConv(input_size=512,
+        #                            hidden_size=hidden_size,
+        #                            conv_type=conv_type,
+        #                            use_bn=use_bn,
+        #                            num_classes=num_classes)
         self.decoder = utils.Decode(gloss_dict, num_classes, 'beam')
         self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
                                           num_layers=2, bidirectional=True)
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
-            self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
+            self.early_cls = NormLinear(hidden_size, self.num_classes)
         else:
             self.classifier = nn.Linear(hidden_size, self.num_classes)
-            self.classifier = nn.Linear(hidden_size, self.num_classes)
+            self.early_cls = nn.Linear(hidden_size, self.num_classes)
         if share_classifier:
-            self.conv1d.fc = self.classifier
+            self.early_cls = self.classifier
         self.register_backward_hook(self.backward_hook)
 
     def backward_hook(self, module, grad_input, grad_output):
@@ -69,40 +90,45 @@ class SLRModel(nn.Module):
     def masked_bn(self, inputs, len_x):
         def pad(tensor, length):
             return torch.cat([tensor, tensor.new(length - tensor.size(0), *tensor.size()[1:]).zero_()])
-
+        batch, temp, channel, height, width = inputs.shape
+        inputs = inputs.reshape(batch * temp, channel, height, width)
         x = torch.cat([inputs[len_x[0] * idx:len_x[0] * idx + lgt] for idx, lgt in enumerate(len_x)])
         x = self.conv2d(x)
         x = torch.cat([pad(x[sum(len_x[:idx]):sum(len_x[:idx + 1])], len_x[0])
                        for idx, lgt in enumerate(len_x)])
+        x = x.reshape(batch, temp, -1).transpose(1, 2)
         return x
+
+    def swin_3d(self, inputs, len_x):
+        len_x = (len_x/2).int()
+        x = rearrange(inputs, 'n d c h w -> n c d h w')
+        x = self.video_swin(x)
+        x = rearrange(x, 'n d h w c -> d n (c h w)')
+        x = self.swin_head(x)
+        logits = self.early_cls(x)
+        return x, len_x, logits
 
     def forward(self, x, len_x, label=None, label_lgt=None):
         if len(x.shape) == 5:
             # videos
-            batch, temp, channel, height, width = x.shape
-            inputs = x.reshape(batch * temp, channel, height, width)
-            framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1).transpose(1, 2)
+            # framewise = self.masked_bn(x, len_x)
+            x, lgt, local_logits = self.swin_3d(x, len_x)
         else:
             # frame-wise features
             framewise = x
-
-        conv1d_outputs = self.conv1d(framewise, len_x)
         # x: T, B, C
-        x = conv1d_outputs['visual_feat']
-        lgt = conv1d_outputs['feat_len']
         tm_outputs = self.temporal_model(x, lgt)
         outputs = self.classifier(tm_outputs['predictions'])
         pred = None if self.training \
             else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
         conv_pred = None if self.training \
-            else self.decoder.decode(conv1d_outputs['conv_logits'], lgt, batch_first=False, probs=False)
+            else self.decoder.decode(local_logits, lgt, batch_first=False, probs=False)
 
         return {
-            "framewise_features": framewise,
+            "framewise_features": x,
             "visual_features": x,
             "feat_len": lgt,
-            "conv_logits": conv1d_outputs['conv_logits'],
+            "conv_logits": local_logits,
             "sequence_logits": outputs,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
@@ -115,6 +141,7 @@ class SLRModel(nn.Module):
                 loss += weight * self.loss['CTCLoss'](ret_dict["conv_logits"].log_softmax(-1),
                                                       label.cpu().int(), ret_dict["feat_len"].cpu().int(),
                                                       label_lgt.cpu().int()).mean()
+                
             elif k == 'SeqCTC':
                 loss += weight * self.loss['CTCLoss'](ret_dict["sequence_logits"].log_softmax(-1),
                                                       label.cpu().int(), ret_dict["feat_len"].cpu().int(),

@@ -23,7 +23,7 @@ def seq_train(loader, model, optimizer, device, epoch_idx, recoder):
         ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt)
         loss = model.criterion_calculation(ret_dict, label, label_lgt)
         if np.isinf(loss.item()) or np.isnan(loss.item()):
-            print(data[-1])
+            print(loss.item(), data[-1])
             continue
         optimizer.zero_grad()
         loss.backward()
@@ -34,7 +34,7 @@ def seq_train(loader, model, optimizer, device, epoch_idx, recoder):
             recoder.print_log(
                 '\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:.6f}'
                     .format(epoch_idx, batch_idx, len(loader), loss.item(), clr[0]))
-            self.recoder.print_wandb({
+            recoder.print_wandb({
                 'epoch': epoch_idx,
                 'step': epoch_idx*len(loader) + batch_idx,
                 'Loss': loss.item(),
@@ -42,7 +42,7 @@ def seq_train(loader, model, optimizer, device, epoch_idx, recoder):
                 })
     optimizer.scheduler.step()
     recoder.print_log('\tMean training loss: {:.10f}.'.format(np.mean(loss_value)))
-    self.recoder.print_wandb({
+    recoder.print_wandb({
         'epoch': epoch_idx,
         'Mean training loss': np.mean(loss_value),
         })
