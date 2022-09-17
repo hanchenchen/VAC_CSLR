@@ -55,9 +55,10 @@ class Processor():
                 if save_model:
                     model_path = "{}dev_{:05.2f}_epoch{}_model.pt".format(self.arg.work_dir, dev_wer, epoch)
                     seq_model_list.append(model_path)
-                    model_path = sorted(model_path)
-                    for path in model_path[3:]:
+                    seq_model_list = sorted(seq_model_list)
+                    for path in seq_model_list[3:]:
                         os.remove(path)
+                    seq_model_list = seq_model_list[:3]
                     print("seq_model_list", seq_model_list)
                     self.save_model(epoch, model_path)
         elif self.arg.phase == 'test':

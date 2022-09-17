@@ -134,7 +134,7 @@ class SLRModel(nn.Module):
                                                             use_blank=False)
                 loss_kv[f'Loss/{k}_{i}'] = l.item()
                 loss += l
-        return loss, loss_kv
+        return loss/scale_num, loss_kv
 
     def criterion_init(self):
         self.loss['CTCLoss'] = torch.nn.CTCLoss(reduction='none', zero_infinity=False)

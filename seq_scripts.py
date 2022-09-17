@@ -97,7 +97,7 @@ def seq_eval(cfg, loader, model, device, mode, epoch, work_dir, recoder,
     recoder.print_log(f"Epoch {epoch}, {mode} {lstm_ret: 2.2f}%", f"{work_dir}/{mode}.txt")
     recoder.print_wandb({
         'epoch': epoch,
-        'Test WER': lstm_ret,
+        f'{mode} WER': lstm_ret,
         })
     return lstm_ret
 
