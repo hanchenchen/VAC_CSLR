@@ -78,9 +78,9 @@ class TemporalConv(nn.Module):
             lgt = self._update_lgt(lgt, ks)
             logits = None if self.num_classes == -1 \
                 else self.fc(visual_feat.transpose(1, 2)).transpose(1, 2)
-            results.append({
-                "visual_feat": visual_feat.permute(2, 0, 1),
-                "conv_logits": logits.permute(2, 0, 1),
-                "feat_len": lgt.cpu(),
-            })
+        results.append({
+            "visual_feat": visual_feat.permute(2, 0, 1),
+            "conv_logits": logits.permute(2, 0, 1),
+            "feat_len": lgt.cpu(),
+        })
         return results

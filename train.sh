@@ -1,4 +1,4 @@
 python main.py  \
---config configs/05-02-fpn.yaml  \
---device 4,5 \
---work-dir work-dir/train/05-02-fpn/
+--config configs/baseline+vac+stmc.yaml  \
+--device 6,7 \
+--work-dir work-dir/train/02-baseline+vac+stmc/
