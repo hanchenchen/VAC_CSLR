@@ -22,8 +22,9 @@ class TemporalConv(nn.Module):
         elif self.conv_type == 2:
             self.kernel_size = ['K5', "P2", 'K5', "P2"]
 
-        modules = []
+        self.temporal_conv = []
         for layer_idx, ks in enumerate(self.kernel_size):
+            modules = []
             input_sz = self.input_size if layer_idx == 0 else self.hidden_size
             if ks[0] == 'P':
                 modules.append(nn.MaxPool1d(kernel_size=int(ks[1]), ceil_mode=False))
@@ -33,7 +34,9 @@ class TemporalConv(nn.Module):
                 )
                 modules.append(nn.BatchNorm1d(self.hidden_size))
                 modules.append(nn.ReLU(inplace=True))
-        self.temporal_conv = nn.Sequential(*modules)
+            modules = nn.Sequential(*modules)
+            self.temporal_conv.append(modules)
+        self.temporal_conv = nn.ModuleList(self.temporal_conv)
 
         if self.num_classes != -1:
             self.fc = nn.Linear(self.hidden_size, self.num_classes)
@@ -47,6 +50,14 @@ class TemporalConv(nn.Module):
                 feat_len -= int(ks[1]) - 1
         return feat_len
 
+    def _update_lgt(self, lgt, ks):
+        feat_len = copy.deepcopy(lgt)
+        if ks[0] == 'P':
+            feat_len = torch.div(feat_len, 2)
+        else:
+            feat_len -= int(ks[1]) - 1
+        return feat_len
+
     def forward(self, frame_feat, lgt):
         visual_feat = self.temporal_conv(frame_feat)
         lgt = self.update_lgt(lgt)
@@ -57,3 +68,19 @@ class TemporalConv(nn.Module):
             "conv_logits": logits.permute(2, 0, 1),
             "feat_len": lgt.cpu(),
         }
+    
+    def _forward(self, visual_feat, lgt):
+        results = []
+        for ks, layer_block in zip(
+            self.kernel_size, self.temporal_conv
+        ):
+            visual_feat = layer_block(visual_feat)
+            lgt = self._update_lgt(lgt, ks)
+            logits = None if self.num_classes == -1 \
+                else self.fc(visual_feat.transpose(1, 2)).transpose(1, 2)
+            results.append({
+                "visual_feat": visual_feat.permute(2, 0, 1),
+                "conv_logits": logits.permute(2, 0, 1),
+                "feat_len": lgt.cpu(),
+            })
+        return results

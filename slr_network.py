@@ -87,43 +87,54 @@ class SLRModel(nn.Module):
             # frame-wise features
             framewise = x
 
-        conv1d_outputs = self.conv1d(framewise, len_x)
-        # x: T, B, C
-        x = conv1d_outputs['visual_feat']
-        lgt = conv1d_outputs['feat_len']
-        tm_outputs = self.temporal_model(x, lgt)
-        outputs = self.classifier(tm_outputs['predictions'])
-        pred = None if self.training \
-            else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
-        conv_pred = None if self.training \
-            else self.decoder.decode(conv1d_outputs['conv_logits'], lgt, batch_first=False, probs=False)
+        feat_len = []
+        conv_logits = []
+        sequence_logits = []
+        for conv1d_outputs in self.conv1d._forward(framewise, len_x):
+            # x: T, B, C
+            x = conv1d_outputs['visual_feat']
+            lgt = conv1d_outputs['feat_len']
+            tm_outputs = self.temporal_model(x, lgt)
+            outputs = self.classifier(tm_outputs['predictions'])
+            pred = None if self.training \
+                else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
+            conv_pred = None if self.training \
+                else self.decoder.decode(conv1d_outputs['conv_logits'], lgt, batch_first=False, probs=False)
+            feat_len.append(lgt)
+            conv_logits.append(conv1d_outputs['conv_logits'])
+            sequence_logits.append(outputs)
 
         return {
             "framewise_features": framewise,
-            "visual_features": x,
-            "feat_len": lgt,
-            "conv_logits": conv1d_outputs['conv_logits'],
-            "sequence_logits": outputs,
+            # "visual_features": x,
+            "feat_len": feat_len,
+            "conv_logits": conv_logits,
+            "sequence_logits": sequence_logits,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt):
         loss = 0
-        for k, weight in self.loss_weights.items():
-            if k == 'ConvCTC':
-                loss += weight * self.loss['CTCLoss'](ret_dict["conv_logits"].log_softmax(-1),
-                                                      label.cpu().int(), ret_dict["feat_len"].cpu().int(),
-                                                      label_lgt.cpu().int()).mean()
-            elif k == 'SeqCTC':
-                loss += weight * self.loss['CTCLoss'](ret_dict["sequence_logits"].log_softmax(-1),
-                                                      label.cpu().int(), ret_dict["feat_len"].cpu().int(),
-                                                      label_lgt.cpu().int()).mean()
-            elif k == 'Dist':
-                loss += weight * self.loss['distillation'](ret_dict["conv_logits"],
-                                                           ret_dict["sequence_logits"].detach(),
-                                                           use_blank=False)
-        return loss
+        loss_kv = {}
+        scale_num = len(ret_dict["conv_logits"])
+        for i in range(scale_num):
+            for k, weight in self.loss_weights.items():
+                if k == 'ConvCTC':
+                    l = weight * self.loss['CTCLoss'](ret_dict["conv_logits"][i].log_softmax(-1),
+                                                        label.cpu().int(), ret_dict["feat_len"][i].cpu().int(),
+                                                        label_lgt.cpu().int()).mean()
+                elif k == 'SeqCTC':
+                    l = weight * self.loss['CTCLoss'](ret_dict["sequence_logits"][i].log_softmax(-1),
+                                                        label.cpu().int(), ret_dict["feat_len"][i].cpu().int(),
+                                                        label_lgt.cpu().int()).mean()
+                elif k == 'Dist':
+                    l = weight * self.loss['distillation'](ret_dict["conv_logits"][i],
+                                                            ret_dict["sequence_logits"][i].detach(),
+                                                            use_blank=False)
+                loss_kv[f'Loss/{k}_{i}'] = l.item()
+                loss += l
+        return loss, loss_kv
 
     def criterion_init(self):
         self.loss['CTCLoss'] = torch.nn.CTCLoss(reduction='none', zero_infinity=False)
