@@ -52,12 +52,15 @@ class SLRModel(nn.Module):
         self.decoder = utils.Decode(gloss_dict, num_classes, 'beam')
         self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
                                           num_layers=2, bidirectional=True)
+        self.dense_ratio = 4
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
+            self.dense_classifier = NormLinear(512, self.num_classes*self.dense_ratio)
         else:
             self.classifier = nn.Linear(hidden_size, self.num_classes)
             self.classifier = nn.Linear(hidden_size, self.num_classes)
+            self.dense_classifier = nn.Linear(512, self.num_classes*self.dense_ratio)
         if share_classifier:
             self.conv1d.fc = self.classifier
         self.register_backward_hook(self.backward_hook)
@@ -82,7 +85,9 @@ class SLRModel(nn.Module):
             batch, temp, channel, height, width = x.shape
             inputs = x.reshape(batch * temp, channel, height, width)
             framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1).transpose(1, 2)
+            framewise = framewise.reshape(batch, temp, -1)
+            frame_logits = self.dense_classifier(framewise).transpose(0, 1)
+            framewise = framewise.transpose(1, 2)
         else:
             # frame-wise features
             framewise = x
@@ -106,12 +111,14 @@ class SLRModel(nn.Module):
 
         return {
             "framewise_features": framewise,
+            "len_x": len_x,
             # "visual_features": x,
             "feat_len": feat_len,
             "conv_logits": conv_logits,
             "sequence_logits": sequence_logits,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
+            "frame_logits": [frame_logits],
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt):
@@ -132,6 +139,13 @@ class SLRModel(nn.Module):
                     l = weight * self.loss['distillation'](ret_dict["conv_logits"][i],
                                                             ret_dict["sequence_logits"][i].detach(),
                                                             use_blank=False)
+                elif k == 'DenseCTC':
+                    label = label.reshape(-1)
+                    label = torch.stack([label*self.dense_ratio+i for i in range(self.dense_ratio)], dim=1).reshape(-1)
+                    label_lgt = label_lgt*self.dense_ratio
+                    l = weight * self.loss['CTCLoss'](ret_dict["frame_logits"][i].log_softmax(-1),
+                                                        label.cpu().int(), ret_dict["len_x"].cpu().int(),
+                                                        label_lgt.cpu().int()).mean()
                 loss_kv[f'Loss/{k}_{i}'] = l.item()
                 loss += l
         return loss/scale_num, loss_kv
