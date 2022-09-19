@@ -113,8 +113,14 @@ class Processor():
             self.load_checkpoint_weights(model, optimizer)
         model = self.model_to_device(model)
         print("Loading model finished.")
+        self.recoder.print_log("Params: {}".format(self.get_parameter_number(model)))
         self.load_data()
         return model, optimizer
+
+    def get_parameter_number(self, model):
+        total_num = sum(p.numel() for p in model.parameters())
+        trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        return {'Total': total_num, 'Trainable': trainable_num}
 
     def model_to_device(self, model):
         model = model.to(self.device.output_device)
