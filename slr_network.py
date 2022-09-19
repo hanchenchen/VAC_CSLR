@@ -7,9 +7,9 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from transformers import BertModel, BertConfig
 from modules.criterions import SeqKD
 from modules import BiLSTMLayer, TemporalConv
-
 
 class Identity(nn.Module):
     def __init__(self):
@@ -50,8 +50,11 @@ class SLRModel(nn.Module):
                                    use_bn=use_bn,
                                    num_classes=num_classes)
         self.decoder = utils.Decode(gloss_dict, num_classes, 'beam')
-        self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
-                                          num_layers=2, bidirectional=True)
+        # self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
+        #                                   num_layers=2, bidirectional=True)
+        configuration = BertConfig(num_hidden_layers=2, hidden_size=1024, num_attention_heads=8)
+        self.temporal_model = BertModel(configuration)
+ 
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
@@ -94,8 +97,13 @@ class SLRModel(nn.Module):
             # x: T, B, C
             x = conv1d_outputs['visual_feat']
             lgt = conv1d_outputs['feat_len']
-            tm_outputs = self.temporal_model(x, lgt)
-            outputs = self.classifier(tm_outputs['predictions'])
+            T, B, C = x.shape
+            attention_mask = torch.ones(B, T).to(x)
+            for b in range(batch):
+                attention_mask[b][lgt[b].int():] = 0
+            outputs = self.temporal_model(inputs_embeds=x.permute(1, 0, 2), attention_mask=attention_mask)
+            tm_outputs = outputs.last_hidden_state.permute(1, 0, 2)
+            outputs = self.classifier(tm_outputs)
             pred = None if self.training \
                 else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
             conv_pred = None if self.training \
