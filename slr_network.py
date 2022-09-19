@@ -6,10 +6,11 @@ import types
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 import torchvision.models as models
 from modules.criterions import SeqKD
 from modules import BiLSTMLayer, TemporalConv
-
+from modules.video_swin_transformer import SwinTransformer3D
 
 class Identity(nn.Module):
     def __init__(self):
@@ -42,8 +43,27 @@ class SLRModel(nn.Module):
         self.criterion_init()
         self.num_classes = num_classes
         self.loss_weights = loss_weights
-        self.conv2d = getattr(models, c2d_type)(pretrained=True)
-        self.conv2d.fc = Identity()
+        self.video_swin = SwinTransformer3D(
+            pretrained='checkpoints/swin/swin_tiny_patch244_window877_kinetics400_1k.pth',
+            pretrained2d=False,
+            patch_size=(2,4,4),
+            embed_dim=96,
+            depths=[2, 2, 6, 2],
+            num_heads=[3, 6, 12, 24],
+            window_size=(8,7,7),
+            mlp_ratio=4.,
+            qkv_bias=True,
+            qk_scale=None,
+            drop_rate=0.,
+            attn_drop_rate=0.,
+            drop_path_rate=0.2,
+            patch_norm=True
+        )
+        self.video_swin.init_weights()
+        self.swin_head = nn.Linear(37632, 512)
+        
+        # self.conv2d = getattr(models, c2d_type)(pretrained=True)
+        # self.conv2d.fc = Identity()
         self.conv1d = TemporalConv(input_size=512,
                                    hidden_size=hidden_size,
                                    conv_type=conv_type,
@@ -69,20 +89,29 @@ class SLRModel(nn.Module):
     def masked_bn(self, inputs, len_x):
         def pad(tensor, length):
             return torch.cat([tensor, tensor.new(length - tensor.size(0), *tensor.size()[1:]).zero_()])
-
+        batch, temp, channel, height, width = inputs.shape
+        inputs = inputs.reshape(batch * temp, channel, height, width)
         x = torch.cat([inputs[len_x[0] * idx:len_x[0] * idx + lgt] for idx, lgt in enumerate(len_x)])
         x = self.conv2d(x)
         x = torch.cat([pad(x[sum(len_x[:idx]):sum(len_x[:idx + 1])], len_x[0])
                        for idx, lgt in enumerate(len_x)])
+        x = x.reshape(batch, temp, -1).transpose(1, 2)
         return x
+
+    def swin_3d(self, inputs, len_x):
+        len_x = (len_x/2).int()
+        x = rearrange(inputs, 'n d c h w -> n c d h w')
+        x = self.video_swin(x)
+        x = rearrange(x, 'n d h w c -> n d (c h w)')
+        x = self.swin_head(x)
+        x = rearrange(x, 'n d c -> n c d')
+        return x, len_x
 
     def forward(self, x, len_x, label=None, label_lgt=None):
         if len(x.shape) == 5:
             # videos
-            batch, temp, channel, height, width = x.shape
-            inputs = x.reshape(batch * temp, channel, height, width)
-            framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1).transpose(1, 2)
+            # framewise = self.masked_bn(x, len_x)
+            framewise, len_x = self.swin_3d(x, len_x)
         else:
             # frame-wise features
             framewise = x

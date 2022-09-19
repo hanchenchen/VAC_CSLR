@@ -119,8 +119,8 @@ class Processor():
     def model_to_device(self, model):
         model = model.to(self.device.output_device)
         if len(self.device.gpu_list) > 1:
-            model.conv2d = nn.DataParallel(
-                model.conv2d,
+            model.video_swin = nn.DataParallel(
+                model.video_swin,
                 device_ids=self.device.gpu_list,
                 output_device=self.device.output_device)
         model = convert_model(model)

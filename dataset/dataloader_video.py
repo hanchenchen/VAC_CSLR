@@ -39,6 +39,7 @@ class BaseFeeder(data.Dataset):
         # self.inputs_list = dict([*filter(lambda x: isinstance(x[0], str) or x[0] < 10, self.inputs_list.items())])
         print(mode, len(self))
         self.data_aug = self.transform()
+        # self.num_clips = 128
         print("")
 
     def __getitem__(self, idx):
@@ -66,7 +67,26 @@ class BaseFeeder(data.Dataset):
                 continue
             if phase in self.dict.keys():
                 label_list.append(self.dict[phase][0])
+        if self.transform_mode=='train':
+            img_list = self.sample_frame(img_list)
         return [cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB) for img_path in img_list], label_list, fi
+
+    def sample_frame(self, img_list):
+        num_frames = len(img_list)
+        self.num_clips = num_frames // 2
+        avg_interval = num_frames // self.num_clips
+        if avg_interval == 0:
+            ratio = num_frames / self.num_clips
+            clip_offsets = np.around(np.arange(self.num_clips) * ratio).astype(np.int64)
+        else:
+            base_offsets = np.arange(self.num_clips) * avg_interval
+            clip_offsets = base_offsets + np.random.randint(
+                avg_interval, size=self.num_clips)
+            clip_offsets[-1] = min(num_frames-1, clip_offsets[-1])
+        sampled = []
+        for idx in clip_offsets:
+            sampled.append(img_list[idx])
+        return sampled
 
     def read_features(self, index):
         # load file info

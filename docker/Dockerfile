@@ -14,4 +14,4 @@ RUN ./configure --shared
 # --mkl-root=/usr --mkl-libdir=/usr/local/lib
 RUN make depend -j 8
 RUN make -j 8
-RUN pip install opencv-python opencv-contrib-python-headless pandas matplotlib scipy -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
+RUN pip install opencv-python opencv-contrib-python-headless pandas matplotlib scipy einops timm transformers -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
