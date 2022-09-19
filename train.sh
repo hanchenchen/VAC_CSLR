@@ -1,4 +1,4 @@
 python main.py  \
---config configs/08-add-clip-weight-00.yaml  \
---device 0,1 \
---work-dir work-dir/train/09-12-layer-tf-08/
+--config configs/baseline.yaml  \
+--device 6,7 \
+--work-dir work-dir/train/10-baseline-09-12-layer-tf/
