@@ -14,9 +14,9 @@ class Recorder(object):
         self.log_interval = log_interval
         self.log_path = '{}/log.txt'.format(work_dir)
         self.timer = dict(dataloader=0.001, device=0.001, forward=0.001, backward=0.001)
-        print(f"{_config.config.split('/')[-1][:-5]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5] if _config.load_weights is not None else ''}")
+        print(f"{_config.work_dir.split('/')[-2]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5] if _config.load_weights is not None else ''}")
         wandb.init(
-            name=f"{_config.config.split('/')[-1][:-5]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5] if _config.load_weights is not None else ''}",
+            name=f"{_config.work_dir.split('/')[-2]}_seed{_config.random_seed}_from_{_config.load_weights.split('/')[-1][:-5] if _config.load_weights is not None else ''}",
             project="sclr",
             entity="hanchenchen",
             config=_config,
