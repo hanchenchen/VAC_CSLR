@@ -47,9 +47,12 @@ class Processor():
                     dev_wer = seq_eval(self.arg, self.data_loader['dev'], self.model, self.device,
                                        'dev', epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
                     self.recoder.print_log("Dev WER: {:05.2f}%".format(dev_wer))
+                    train_wer = seq_eval(self.arg, self.data_loader["train_eval"], self.model, self.device,
+                                 "train", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
+                    self.recoder.print_log("Train WER: {:05.2f}%".format(train_wer))
                     self.recoder.print_wandb({
                         'epoch': epoch,
-                        'Dev WER': dev_wer,
+                        'Train WER': train_wer,
                         })
                     
                 if save_model:
