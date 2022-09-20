@@ -51,7 +51,7 @@ class SLRModel(nn.Module):
                                    num_classes=num_classes)
         self.decoder = utils.Decode(gloss_dict, num_classes, 'beam')
         self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
-                                          num_layers=2, bidirectional=True)
+                                          num_layers=3, bidirectional=True)
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
