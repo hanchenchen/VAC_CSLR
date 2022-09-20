@@ -69,8 +69,8 @@ class Processor():
                 raise ValueError('Please appoint --load-weights.')
             self.recoder.print_log('Model:   {}.'.format(self.arg.model))
             self.recoder.print_log('Weights: {}.'.format(self.arg.load_weights))
-            # train_wer = seq_eval(self.arg, self.data_loader["train_eval"], self.model, self.device,
-            #                      "train", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
+            train_wer = seq_eval(self.arg, self.data_loader["train_eval"], self.model, self.device,
+                                 "train", epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
             dev_wer = seq_eval(self.arg, self.data_loader["dev"], self.model, self.device,
                                "dev", self.epoch, self.arg.work_dir, self.recoder, self.arg.evaluate_tool)
             test_wer = seq_eval(self.arg, self.data_loader["test"], self.model, self.device,
