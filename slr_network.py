@@ -53,7 +53,7 @@ class SLRModel(nn.Module):
         self.decoder = utils.Decode(gloss_dict, num_classes, 'beam')
         # self.temporal_model = BiLSTMLayer(rnn_type='LSTM', input_size=hidden_size, hidden_size=hidden_size,
         #                                   num_layers=2, bidirectional=True)
-        configuration = BertConfig(num_hidden_layers=12, hidden_size=1024, num_attention_heads=8)
+        configuration = BertConfig(num_hidden_layers=2, hidden_size=1024, num_attention_heads=8)
         self.temporal_model = BertModel(configuration)
         self.dense_ratio = 4
         if weight_norm:
