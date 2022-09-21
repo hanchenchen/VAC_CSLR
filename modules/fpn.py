@@ -11,9 +11,7 @@ class FPN(nn.Module):
     order, and must be consecutive
     """
 
-    def __init__(
-        self, in_channels_list, out_channels, conv_block, top_blocks=None
-    ):
+    def __init__(self, in_channels_list, out_channels, conv_block, top_blocks=None):
         """
         Arguments:
             in_channels_list (list[int]): number of channels for each feature map that
@@ -59,8 +57,9 @@ class FPN(nn.Module):
             # inner_top_down = F.interpolate(last_inner, scale_factor=2, mode="nearest")
             inner_lateral = getattr(self, inner_block)(feature)
             inner_top_down = F.interpolate(
-                last_inner, size=(int(inner_lateral.shape[-2]), int(inner_lateral.shape[-1])),
-                mode='nearest'
+                last_inner,
+                size=(int(inner_lateral.shape[-2]), int(inner_lateral.shape[-1])),
+                mode="nearest",
             )
             last_inner = inner_lateral + inner_top_down
             results.insert(0, getattr(self, layer_block)(last_inner))
@@ -84,6 +83,7 @@ class LastLevelP6P7(nn.Module):
     """
     This module is used in RetinaNet to generate extra layers, P6 and P7.
     """
+
     def __init__(self, in_channels, out_channels):
         super(LastLevelP6P7, self).__init__()
         self.p6 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)

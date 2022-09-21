@@ -1,5 +1,5 @@
 import os
-import pdb
+
 import torch
 import torch.nn as nn
 
@@ -11,8 +11,8 @@ class GpuDataParallel(object):
 
     def set_device(self, device):
         device = str(device)
-        if device != 'None':
-            self.gpu_list = [i for i in range(len(device.split(',')))]
+        if device != "None":
+            self.gpu_list = [i for i in range(len(device.split(",")))]
             os.environ["CUDA_VISIBLE_DEVICES"] = device
             output_device = self.gpu_list[0]
             self.occupy_gpu(self.gpu_list)
@@ -23,9 +23,8 @@ class GpuDataParallel(object):
         model = model.to(self.output_device)
         if len(self.gpu_list) > 1:
             model = nn.DataParallel(
-                model,
-                device_ids=self.gpu_list,
-                output_device=self.output_device)
+                model, device_ids=self.gpu_list, output_device=self.output_device
+            )
         return model
 
     def data_to_device(self, data):
@@ -47,7 +46,7 @@ class GpuDataParallel(object):
 
     def occupy_gpu(self, gpus=None):
         """
-            make program appear on nvidia-smi.
+        make program appear on nvidia-smi.
         """
         if len(gpus) == 0:
             torch.zeros(1).cuda()
