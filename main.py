@@ -86,9 +86,9 @@ class Processor:
                     #     }
                     # )
 
-                if save_model:
-                    model_path = "{}dev_{:05.2f}_epoch{}_model.pt".format(
-                        self.arg.work_dir, dev_wer, epoch
+                if save_model and dist.get_rank()==0:
+                    model_path = "{}dev_{:05.5f}_epoch{}_model.pt".format(
+                        self.arg.work_dir, dev_wer*0.01, epoch
                     )
                     self.save_model(epoch, model_path)
                     seq_model_list.append(model_path)
