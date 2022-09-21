@@ -19,12 +19,12 @@ loss_weights:
   # VAC
   ConvCTC: 1.0
   Dist: 10.0
-  DenseCTC: 1.0
+  SoftDTW: 1.0
 #load_weights: ''
 
 optimizer_args:
   optimizer: Adam
-  base_lr: 0.0001
+  base_lr: 0.0002
   step: [ 20, 35]
   learning_ratio: 1
   weight_decay: 0.0001

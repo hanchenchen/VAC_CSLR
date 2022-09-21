@@ -9,7 +9,7 @@ import cv2
 import pandas
 import six
 import torch
-
+import torch.nn.functional as F
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import matplotlib.pyplot as plt
@@ -182,13 +182,14 @@ class BaseFeeder(data.Dataset):
             ]
             padded_video = torch.stack(padded_video).permute(0, 2, 1)
         label_length = torch.LongTensor([len(lab) for lab in label])
+        max_label_length = max(label_length)
         if max(label_length) == 0:
             return padded_video, video_length, [], [], info
         else:
             padded_label = []
             for lab in label:
-                padded_label.extend(lab)
-            padded_label = torch.LongTensor(padded_label)
+                padded_label.append(F.pad(lab, (0, max_label_length - lab.shape[0]), "constant", 0))
+            padded_label = torch.LongTensor(torch.stack(padded_label, dim=0))
             return padded_video, video_length, padded_label, label_length, info
 
     def __len__(self):

@@ -3,10 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from transformers import BertConfig, BertModel
 
 import utils
 from modules import BiLSTMLayer, TemporalConv
-from modules.criterions import SeqKD
+from modules.criterions import SeqKD, SoftDTW
 
 
 class Identity(nn.Module):
@@ -42,6 +43,7 @@ class SLRModel(nn.Module):
         share_classifier=True,
     ):
         super(SLRModel, self).__init__()
+        self.dense_ratio = 8
         self.decoder = None
         self.loss = dict()
         self.criterion_init()
@@ -64,6 +66,10 @@ class SLRModel(nn.Module):
             num_layers=2,
             bidirectional=True,
         )
+        configuration = BertConfig(
+            num_hidden_layers=12, hidden_size=512, num_attention_heads=4
+        )
+        self.back_trans = BertModel(configuration, add_pooling_layer=False)
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
@@ -109,12 +115,12 @@ class SLRModel(nn.Module):
             batch, temp, channel, height, width = x.shape
             inputs = x.reshape(batch * temp, channel, height, width)
             framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1).transpose(1, 2)
+            framewise = framewise.reshape(batch, temp, -1)
         else:
             # frame-wise features
             framewise = x
 
-        conv1d_outputs = self.conv1d(framewise, len_x)
+        conv1d_outputs = self.conv1d(framewise.transpose(1, 2), len_x)
         # x: T, B, C
         x = conv1d_outputs["visual_feat"]
         lgt = conv1d_outputs["feat_len"]
@@ -173,6 +179,25 @@ class SLRModel(nn.Module):
                     ret_dict["sequence_logits"].detach(),
                     use_blank=False,
                 )
+            elif k == "SoftDTW":
+                B, N = label.shape
+                input_ids = label.reshape(-1)
+                input_ids = torch.stack(
+                    [input_ids * self.dense_ratio + i for i in range(self.dense_ratio)],
+                    dim=1,
+                ).reshape(-1)
+                input_ids = input_ids.reshape(B, -1)
+                label_lgt = label_lgt * self.dense_ratio
+
+                B, N = input_ids.shape
+                attention_mask = torch.ones(B, N).to(input_ids)
+                for b in range(B):
+                    attention_mask[b][label_lgt[b].int() :] = 0
+                outputs = self.back_trans(
+                    input_ids=input_ids, attention_mask=attention_mask
+                )
+                last_hidden_state = outputs.last_hidden_state
+                l = weight * self.loss["SoftDTW"](last_hidden_state, ret_dict['framewise_features']).mean()
             loss_kv[f"Loss/{k}"] = l.item()
             loss += l
         return loss, loss_kv
@@ -180,6 +205,7 @@ class SLRModel(nn.Module):
     def criterion_init(self):
         self.loss["CTCLoss"] = torch.nn.CTCLoss(reduction="none", zero_infinity=False)
         self.loss["distillation"] = SeqKD(T=8)
+        self.loss["SoftDTW"] = SoftDTW(gamma=1.0, normalize=True)
         return self.loss
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False):

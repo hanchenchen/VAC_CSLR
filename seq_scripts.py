@@ -48,7 +48,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
     for batch_idx, data in enumerate(tqdm(loader)):
         vid = data[0].cuda()
         vid_lgt = data[1]
-        label = data[2]
+        label = data[2].cuda()
         label_lgt = data[3]
         loss, loss_kv = model(
             vid, vid_lgt, label=label, label_lgt=label_lgt, return_loss=True
