@@ -260,10 +260,7 @@ class Processor:
 
     def build_dataloader(self, dataset, mode, train_flag):
         rank = dist.get_rank()
-        if train_flag:
-            sampler = DistributedSampler(dataset, shuffle=train_flag)
-        else:
-            sampler = None
+        sampler = DistributedSampler(dataset, shuffle=train_flag)
         dataloader_args = dict(
             dataset=self.dataset[mode],
             batch_size=self.arg.batch_size if train_flag else self.arg.test_batch_size,
