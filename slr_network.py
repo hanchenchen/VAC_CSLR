@@ -42,6 +42,7 @@ class SLRModel(nn.Module):
         share_classifier=True,
     ):
         super(SLRModel, self).__init__()
+        self.device = torch.device("cuda")
         self.decoder = None
         self.loss = dict()
         self.criterion_init()
@@ -183,6 +184,8 @@ class SLRModel(nn.Module):
         return self.loss
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False):
+        x = x.to(self.device, non_blocking=True)
+        # label = label.to(self.device, non_blocking=True)
         res = self.infer(x, len_x, label, label_lgt)
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt)

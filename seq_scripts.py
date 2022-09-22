@@ -46,7 +46,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
     model.train()
     clr = [group["lr"] for group in optimizer.optimizer.param_groups]
     for batch_idx, data in enumerate(tqdm(loader)):
-        vid = data[0].cuda()
+        vid = data[0]
         vid_lgt = data[1]
         label = data[2]
         label_lgt = data[3]
@@ -107,10 +107,10 @@ def seq_eval(
     stat = {i: [0, 0] for i in range(len(loader.dataset.dict))}
     for batch_idx, data in enumerate(tqdm(loader)):
         recoder.record_timer("device")
-        vid = data_to_device(data[0])
-        vid_lgt = data_to_device(data[1])
-        label = data_to_device(data[2])
-        label_lgt = data_to_device(data[3])
+        vid = data[0]
+        vid_lgt = data[1]
+        label = data[2]
+        label_lgt = data[3]
         with torch.no_grad():
             ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt)
 

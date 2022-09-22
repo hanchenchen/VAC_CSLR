@@ -68,17 +68,17 @@ class Processor:
                         self.arg.evaluate_tool,
                     )
                     self.recoder.print_log("Dev WER: {:05.2f}%".format(dev_wer))
-                    # train_wer = seq_eval(
-                    #     self.arg,
-                    #     self.data_loader["train_eval"],
-                    #     self.model,
-                    #     "train",
-                    #     epoch,
-                    #     self.arg.work_dir,
-                    #     self.recoder,
-                    #     self.arg.evaluate_tool,
-                    # )
-                    # self.recoder.print_log("Train WER: {:05.2f}%".format(train_wer))
+                    train_wer = seq_eval(
+                        self.arg,
+                        self.data_loader["train_eval"],
+                        self.model,
+                        "train",
+                        epoch,
+                        self.arg.work_dir,
+                        self.recoder,
+                        self.arg.evaluate_tool,
+                    )
+                    self.recoder.print_log("Train WER: {:05.2f}%".format(train_wer))
                     # self.recoder.print_wandb(
                     #     {
                     #         "epoch": epoch,
@@ -156,7 +156,7 @@ class Processor:
         torch.save(
             {
                 "epoch": epoch,
-                "model_state_dict": self.model.state_dict(),
+                "model_state_dict": self.model.module.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.optimizer.scheduler.state_dict(),
                 "rng_state": self.rng.save_rng_state(),
@@ -190,17 +190,17 @@ class Processor:
         return {"Total": total_num, "Trainable": trainable_num}
 
     def model_to_device(self, model):
-        model = convert_model(model)
-        model.cuda()
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model).cuda()
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=False,
+            output_device=torch.cuda.current_device(), 
+            find_unused_parameters=True,
         )
         return model
 
     def load_model_weights(self, model, weight_path):
-        state_dict = torch.load(weight_path)
+        state_dict = torch.load(weight_path, map_location=torch.device("cpu"))
         if len(self.arg.ignore_weights):
             for w in self.arg.ignore_weights:
                 if state_dict.pop(w, None) is not None:
@@ -224,7 +224,7 @@ class Processor:
 
     def load_checkpoint_weights(self, model, optimizer):
         self.load_model_weights(model, self.arg.load_checkpoints)
-        state_dict = torch.load(self.arg.load_checkpoints)
+        state_dict = torch.load(self.arg.load_checkpoints, map_location=torch.device("cpu"))
 
         if len(torch.cuda.get_rng_state_all()) == len(state_dict["rng_state"]["cuda"]):
             print("Loading random seeds...")
@@ -261,6 +261,7 @@ class Processor:
     def build_dataloader(self, dataset, mode, train_flag):
         rank = dist.get_rank()
         sampler = DistributedSampler(dataset, shuffle=train_flag)
+
         dataloader_args = dict(
             dataset=self.dataset[mode],
             batch_size=self.arg.batch_size if train_flag else self.arg.test_batch_size,
@@ -280,13 +281,19 @@ class Processor:
         return torch.utils.data.DataLoader(**dataloader_args)
 
 
-def set_random_seed(seed):
+def set_random_seed(seed, cuda_deterministic=True):
     """Set random seeds."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    if cuda_deterministic:  # slower, more reproducible
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    else:  # faster, less reproducible
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
 
 
 def worker_init_fn(worker_id, num_workers, rank, seed):
@@ -323,14 +330,7 @@ if __name__ == "__main__":
     with open(f"./configs/{args.dataset}.yaml", "r") as f:
         args.dataset_info = yaml.load(f, Loader=yaml.FullLoader)
     init_dist()
-    set_random_seed(args.random_seed)
-    torch.backends.cudnn.enabled = True
-    # slower, more reproducible
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    # # faster, less reproducible
-    # torch.backends.cudnn.deterministic = False
-    # torch.backends.cudnn.benchmark = True
+    set_random_seed(args.random_seed+args.local_rank, cuda_deterministic=True)
     processor = Processor(args)
     utils.pack_code("./", args.work_dir)
     processor.start()
