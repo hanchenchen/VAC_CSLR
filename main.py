@@ -172,13 +172,14 @@ class Processor:
             gloss_dict=self.gloss_dict,
             loss_weights=self.arg.loss_weights,
         )
-        optimizer = utils.Optimizer(model, self.arg.optimizer_args)
+        # optimizer = utils.Optimizer(model, self.arg.optimizer_args)
 
         if self.arg.load_weights:
             self.load_model_weights(model, self.arg.load_weights)
         elif self.arg.load_checkpoints:
             self.load_checkpoint_weights(model, optimizer)
         model = self.model_to_device(model)
+        optimizer = utils.Optimizer(model, self.arg.optimizer_args)
         print("Loading model finished.")
         self.recoder.print_log("Params: {}".format(self.get_parameter_number(model)))
         self.load_data()
@@ -196,6 +197,7 @@ class Processor:
             device_ids=[torch.cuda.current_device()],
             output_device=torch.cuda.current_device(), 
             find_unused_parameters=True,
+            broadcast_buffers=False,
         )
         return model
 

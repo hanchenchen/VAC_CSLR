@@ -44,6 +44,7 @@ def reduce_loss_dict(loss_dict):
 
 def seq_train(loader, model, optimizer, epoch_idx, recoder):
     model.train()
+    loader.sampler.set_epoch(epoch_idx)
     clr = [group["lr"] for group in optimizer.optimizer.param_groups]
     for batch_idx, data in enumerate(tqdm(loader)):
         vid = data[0]
