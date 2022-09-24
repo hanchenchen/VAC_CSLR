@@ -175,7 +175,8 @@ class SLRModel(nn.Module):
                     use_blank=False,
                 )
             loss_kv[f"Loss/{k}"] = l.item()
-            loss += l
+            if not (np.isinf(l.item()) or np.isnan(l.item())):
+                loss += l
         return loss, loss_kv
 
     def criterion_init(self):

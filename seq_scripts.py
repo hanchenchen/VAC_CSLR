@@ -56,7 +56,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         )
         if np.isinf(loss.item()) or np.isnan(loss.item()):
             print(data[-1])
-            continue
+            # continue
         optimizer.zero_grad()
         loss.backward()
         # nn.utils.clip_grad_norm_(model.rnn.parameters(), 5)
