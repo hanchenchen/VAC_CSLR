@@ -2,7 +2,7 @@ feeder: dataset.dataloader_video.BaseFeeder
 phase: train
 dataset: phoenix14
 # dataset: phoenix14-si5
-num_epoch: 100
+num_epoch: 40
 work_dir: ./work_dir/baseline_res18/
 batch_size: 2
 random_seed: 0
@@ -23,8 +23,8 @@ loss_weights:
 
 optimizer_args:
   optimizer: Adam
-  base_lr: 0.0002
-  step: [ 50, 90]
+  base_lr: 0.0001
+  step: [ 20, 35]
   learning_ratio: 1
   weight_decay: 0.0001
   start_epoch: 0
