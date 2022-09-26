@@ -73,7 +73,7 @@ class SLRModel(nn.Module):
             self.classifier = nn.Linear(hidden_size, self.num_classes)
         if share_classifier:
             self.conv1d.fc = self.classifier
-
+        self.cls_bn = nn.BatchNorm1d(self.num_classes)
     #     self.register_backward_hook(self.backward_hook)
 
     # def backward_hook(self, module, grad_input, grad_output):
@@ -174,6 +174,15 @@ class SLRModel(nn.Module):
                     ret_dict["sequence_logits"].detach(),
                     use_blank=False,
                 )
+            elif k == "2id":
+                logis = self.cls_bn(ret_dict["sequence_logits"].permute(1, 2, 0))
+                logis = logis.sigmoid().log()
+                l = 0.0
+                cur_end = 0
+                for i in range(len(label_lgt)):
+                    l = l + logis[i, label[cur_end: cur_end + label_lgt[i]], :].sum()
+                    cur_end = cur_end + label_lgt[i]
+                l = -l/len(label_lgt)
             loss_kv[f"Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
                 loss += l
@@ -186,7 +195,7 @@ class SLRModel(nn.Module):
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False):
         x = x.to(self.device, non_blocking=True)
-        # label = label.to(self.device, non_blocking=True)
+        label = label.to(self.device, non_blocking=True)
         res = self.infer(x, len_x, label, label_lgt)
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt)
