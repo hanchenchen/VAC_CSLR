@@ -68,17 +68,17 @@ class Processor:
                         self.arg.evaluate_tool,
                     )
                     self.recoder.print_log("Dev WER: {:05.2f}%".format(dev_wer))
-                    train_wer = seq_eval(
-                        self.arg,
-                        self.data_loader["train_eval"],
-                        self.model,
-                        "train",
-                        epoch,
-                        self.arg.work_dir,
-                        self.recoder,
-                        self.arg.evaluate_tool,
-                    )
-                    self.recoder.print_log("Train WER: {:05.2f}%".format(train_wer))
+                    # train_wer = seq_eval(
+                    #     self.arg,
+                    #     self.data_loader["train_eval"],
+                    #     self.model,
+                    #     "train",
+                    #     epoch,
+                    #     self.arg.work_dir,
+                    #     self.recoder,
+                    #     self.arg.evaluate_tool,
+                    # )
+                    # self.recoder.print_log("Train WER: {:05.2f}%".format(train_wer))
                     # self.recoder.print_wandb(
                     #     {
                     #         "epoch": epoch,
@@ -165,6 +165,8 @@ class Processor:
         )
 
     def loading(self):
+        print("Loading data")
+        self.load_data()
         print("Loading model")
         model_class = import_class(self.arg.model)
         model = model_class(
@@ -180,9 +182,10 @@ class Processor:
             self.load_checkpoint_weights(model, optimizer)
         model = self.model_to_device(model)
         optimizer = utils.Optimizer(model, self.arg.optimizer_args)
+        max_steps = len(self.data_loader["train"]) * self.arg.num_epoch
+        optimizer.set_lr_scheduler(self.arg.optimizer_args['decay_power'], max_steps)
         print("Loading model finished.")
         self.recoder.print_log("Params: {}".format(self.get_parameter_number(model)))
-        self.load_data()
         return model, optimizer
 
     def get_parameter_number(self, model):

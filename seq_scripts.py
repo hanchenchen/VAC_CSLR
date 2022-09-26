@@ -45,7 +45,7 @@ def reduce_loss_dict(loss_dict):
 def seq_train(loader, model, optimizer, epoch_idx, recoder):
     model.train()
     loader.sampler.set_epoch(epoch_idx)
-    clr = [group["lr"] for group in optimizer.optimizer.param_groups]
+    # clr = [group["lr"] for group in optimizer.optimizer.param_groups]
     for batch_idx, data in enumerate(tqdm(loader)):
         vid = data[0]
         vid_lgt = data[1]
@@ -66,8 +66,8 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         if batch_idx % recoder.log_interval == 0:
             loss_kv = reduce_loss_dict(loss_kv)
             recoder.print_log(
-                "\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:.6f}".format(
-                    epoch_idx, batch_idx, len(loader), loss.item(), clr[0]
+                "\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:f}".format(
+                    epoch_idx, batch_idx, len(loader), loss.item(), optimizer.optimizer.param_groups[0]["lr"]
                 )
             )
             recoder.print_wandb(
@@ -75,11 +75,11 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
                     "epoch": epoch_idx,
                     "step": epoch_idx * len(loader) + batch_idx,
                     "Loss": loss.item(),
-                    "lr": clr[0],
+                    "lr": optimizer.optimizer.param_groups[0]["lr"],
                     **loss_kv,
                 }
             )
-    optimizer.scheduler.step()
+        optimizer.scheduler.step()
 
 
 def data_to_device(data):

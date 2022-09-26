@@ -1,7 +1,11 @@
 import numpy as np
 import torch
 import torch.optim as optim
-
+from transformers.optimization import AdamW
+from transformers import (
+    get_polynomial_decay_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
+)
 
 class Optimizer(object):
     def __init__(self, model, optim_dict):
@@ -28,6 +32,14 @@ class Optimizer(object):
                 lr=self.optim_dict["base_lr"],
                 weight_decay=self.optim_dict["weight_decay"],
             )
+        elif self.optim_dict["optimizer"] == "AdamW":
+            self.optimizer = AdamW(
+                model.parameters(),
+                lr=self.optim_dict["base_lr"],
+                eps=1e-8, 
+                betas=(0.9, 0.98), 
+                weight_decay=self.optim_dict["weight_decay"],
+            )
         else:
             raise ValueError()
         self.scheduler = self.define_lr_scheduler(
@@ -42,6 +54,22 @@ class Optimizer(object):
             return lr_scheduler
         else:
             raise ValueError()
+
+    def set_lr_scheduler(self, decay_power, max_steps):
+        if decay_power == "cosine":
+            self.scheduler = get_cosine_schedule_with_warmup(
+                self.optimizer,
+                num_warmup_steps=self.optim_dict["warmup_steps"],
+                num_training_steps=max_steps,
+            )
+        else:
+            self.scheduler = get_polynomial_decay_schedule_with_warmup(
+                self.optimizer,
+                num_warmup_steps=self.optim_dict["warmup_steps"],
+                num_training_steps=max_steps,
+                lr_end=self.optim_dict["end_lr"],
+                power=decay_power,
+            )
 
     def zero_grad(self):
         self.optimizer.zero_grad()
