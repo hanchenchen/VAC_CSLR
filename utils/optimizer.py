@@ -7,6 +7,7 @@ from transformers import (
     get_cosine_schedule_with_warmup,
 )
 
+
 class Optimizer(object):
     def __init__(self, model, optim_dict):
         self.optim_dict = optim_dict
@@ -36,8 +37,8 @@ class Optimizer(object):
             self.optimizer = AdamW(
                 model.parameters(),
                 lr=self.optim_dict["base_lr"],
-                eps=1e-8, 
-                betas=(0.9, 0.98), 
+                eps=1e-8,
+                betas=(0.9, 0.98),
                 weight_decay=self.optim_dict["weight_decay"],
             )
         else:

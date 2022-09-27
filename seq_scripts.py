@@ -67,7 +67,11 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
             loss_kv = reduce_loss_dict(loss_kv)
             recoder.print_log(
                 "\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:f}".format(
-                    epoch_idx, batch_idx, len(loader), loss.item(), optimizer.optimizer.param_groups[0]["lr"]
+                    epoch_idx,
+                    batch_idx,
+                    len(loader),
+                    loss.item(),
+                    optimizer.optimizer.param_groups[0]["lr"],
                 )
             )
             recoder.print_wandb(

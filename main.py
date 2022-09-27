@@ -86,9 +86,9 @@ class Processor:
                     #     }
                     # )
 
-                if save_model and dist.get_rank()==0:
+                if save_model and dist.get_rank() == 0:
                     model_path = "{}dev_{:05.5f}_epoch{}_model.pt".format(
-                        self.arg.work_dir, dev_wer*0.01, epoch
+                        self.arg.work_dir, dev_wer * 0.01, epoch
                     )
                     self.save_model(epoch, model_path)
                     seq_model_list.append(model_path)
@@ -183,7 +183,7 @@ class Processor:
         model = self.model_to_device(model)
         optimizer = utils.Optimizer(model, self.arg.optimizer_args)
         max_steps = len(self.data_loader["train"]) * self.arg.num_epoch
-        optimizer.set_lr_scheduler(self.arg.optimizer_args['decay_power'], max_steps)
+        optimizer.set_lr_scheduler(self.arg.optimizer_args["decay_power"], max_steps)
         print("Loading model finished.")
         self.recoder.print_log("Params: {}".format(self.get_parameter_number(model)))
         return model, optimizer
@@ -198,7 +198,7 @@ class Processor:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            output_device=torch.cuda.current_device(), 
+            output_device=torch.cuda.current_device(),
             find_unused_parameters=True,
             broadcast_buffers=False,
         )
@@ -229,7 +229,9 @@ class Processor:
 
     def load_checkpoint_weights(self, model, optimizer):
         self.load_model_weights(model, self.arg.load_checkpoints)
-        state_dict = torch.load(self.arg.load_checkpoints, map_location=torch.device("cpu"))
+        state_dict = torch.load(
+            self.arg.load_checkpoints, map_location=torch.device("cpu")
+        )
 
         if len(torch.cuda.get_rng_state_all()) == len(state_dict["rng_state"]["cuda"]):
             print("Loading random seeds...")
@@ -335,7 +337,7 @@ if __name__ == "__main__":
     with open(f"./configs/{args.dataset}.yaml", "r") as f:
         args.dataset_info = yaml.load(f, Loader=yaml.FullLoader)
     init_dist()
-    set_random_seed(args.random_seed+args.local_rank, cuda_deterministic=True)
+    set_random_seed(args.random_seed + args.local_rank, cuda_deterministic=True)
     processor = Processor(args)
     utils.pack_code("./", args.work_dir)
     processor.start()
