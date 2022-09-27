@@ -19,7 +19,7 @@ loss_weights:
   # VAC
   ConvCTC: 1.0
   Dist: 10.0
-  Smoothing: 1.0
+  Smoothing: 100.0
 #load_weights: ''
 
 optimizer_args:
