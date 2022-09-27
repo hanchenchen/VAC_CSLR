@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from transformers import BertConfig, BertModel
 
 import utils
 from modules import BiLSTMLayer, TemporalConv
@@ -58,27 +59,17 @@ class SLRModel(nn.Module):
             num_classes=num_classes,
         )
         self.decoder = utils.Decode(gloss_dict, num_classes, "beam")
-        self.temporal_model = BiLSTMLayer(
-            rnn_type="LSTM",
-            input_size=hidden_size,
-            hidden_size=hidden_size,
-            num_layers=2,
-            bidirectional=True,
+        # self.temporal_model = BiLSTMLayer(
+        #     rnn_type="LSTM",
+        #     input_size=hidden_size,
+        #     hidden_size=hidden_size,
+        #     num_layers=2,
+        #     bidirectional=True,
+        # )
+        configuration = BertConfig(
+            num_hidden_layers=2, hidden_size=hidden_size, num_attention_heads=8
         )
-        self.l2r_temporal_model = BiLSTMLayer(
-            rnn_type="LSTM",
-            input_size=hidden_size,
-            hidden_size=hidden_size,
-            num_layers=2,
-            bidirectional=False,
-        )
-        self.r2l_temporal_model = BiLSTMLayer(
-            rnn_type="LSTM",
-            input_size=hidden_size,
-            hidden_size=hidden_size,
-            num_layers=2,
-            bidirectional=False,
-        )
+        self.temporal_model = BertModel(configuration)
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
@@ -133,13 +124,24 @@ class SLRModel(nn.Module):
         # x: T, B, C
         x = conv1d_outputs["visual_feat"]
         lgt = conv1d_outputs["feat_len"]
-        tm_outputs = self.temporal_model(x, lgt)
-        l2r_tm_outputs = self.l2r_temporal_model(x, lgt)
-        r2l_tm_outputs = self.r2l_temporal_model(torch.flip(x, [0]), lgt)
+        T, B, C = x.shape
+        attention_mask = torch.ones(B, T).to(x)
+        for b in range(batch):
+            attention_mask[b][lgt[b].int() :] = 0
+        tm_outputs = self.temporal_model(
+            inputs_embeds=x.transpose(0, 1), attention_mask=attention_mask
+        ).last_hidden_state.permute(1, 0, 2)
+        l2r_tm_outputs = self.temporal_model(
+            inputs_embeds=x.transpose(0, 1),
+            attention_mask=torch.tril(attention_mask, diagonal=0),
+        ).last_hidden_state.permute(1, 0, 2)
+        r2l_tm_outputs = self.temporal_model(
+            inputs_embeds=x.transpose(0, 1),
+            attention_mask=torch.triu(attention_mask, diagonal=0),
+        ).last_hidden_state.permute(1, 0, 2)
         outputs = self.classifier(tm_outputs["predictions"])
         l2r_outputs = self.classifier(l2r_tm_outputs["predictions"])
         r2l_outputs = self.classifier(r2l_tm_outputs["predictions"])
-        r2l_outputs = torch.flip(r2l_outputs, [0])
         pred = (
             None
             if self.training
