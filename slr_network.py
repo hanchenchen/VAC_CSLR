@@ -139,9 +139,9 @@ class SLRModel(nn.Module):
             inputs_embeds=x.transpose(0, 1),
             attention_mask=torch.triu(attention_mask, diagonal=0),
         ).last_hidden_state.permute(1, 0, 2)
-        outputs = self.classifier(tm_outputs["predictions"])
-        l2r_outputs = self.classifier(l2r_tm_outputs["predictions"])
-        r2l_outputs = self.classifier(r2l_tm_outputs["predictions"])
+        outputs = self.classifier(tm_outputs)
+        l2r_outputs = self.classifier(l2r_tm_outputs)
+        r2l_outputs = self.classifier(r2l_tm_outputs)
         pred = (
             None
             if self.training
