@@ -22,6 +22,9 @@ class TemporalConv(nn.Module):
             self.kernel_size = ["K5", "P2"]
         elif self.conv_type == 2:
             self.kernel_size = ["K5", "P2", "K5", "P2"]
+        elif self.conv_type == 3:
+            self.kernel_size = ["K5", "P2", "K5"]
+            print("self.conv_type == 3")
 
         modules = []
         for layer_idx, ks in enumerate(self.kernel_size):
