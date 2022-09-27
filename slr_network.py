@@ -65,6 +65,20 @@ class SLRModel(nn.Module):
             num_layers=2,
             bidirectional=True,
         )
+        self.l2r_temporal_model = BiLSTMLayer(
+            rnn_type="LSTM",
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            bidirectional=False,
+        )
+        self.r2l_temporal_model = BiLSTMLayer(
+            rnn_type="LSTM",
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            bidirectional=False,
+        )
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
@@ -120,7 +134,12 @@ class SLRModel(nn.Module):
         x = conv1d_outputs["visual_feat"]
         lgt = conv1d_outputs["feat_len"]
         tm_outputs = self.temporal_model(x, lgt)
+        l2r_tm_outputs = self.l2r_temporal_model(x, lgt)
+        r2l_tm_outputs = self.r2l_temporal_model(torch.flip(x, [0]), lgt)
         outputs = self.classifier(tm_outputs["predictions"])
+        l2r_outputs = self.classifier(l2r_tm_outputs["predictions"])
+        r2l_outputs = self.classifier(r2l_tm_outputs["predictions"])
+        r2l_outputs = torch.flip(r2l_outputs, [0])
         pred = (
             None
             if self.training
@@ -140,6 +159,8 @@ class SLRModel(nn.Module):
             "feat_len": lgt,
             "conv_logits": conv1d_outputs["conv_logits"],
             "sequence_logits": outputs,
+            "l2r_logits": l2r_outputs,
+            "r2l_logits": r2l_outputs,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
         }
@@ -173,6 +194,26 @@ class SLRModel(nn.Module):
                     ret_dict["conv_logits"],
                     ret_dict["sequence_logits"].detach(),
                     use_blank=False,
+                )
+            elif k == "l2r-CTC":
+                l = (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["l2r_logits"].log_softmax(-1),
+                        label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
+                )
+            elif k == "r2l-CTC":
+                l = (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["r2l_logits"].log_softmax(-1),
+                        label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
                 )
             loss_kv[f"Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
