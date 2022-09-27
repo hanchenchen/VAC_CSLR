@@ -110,12 +110,12 @@ class SLRModel(nn.Module):
             batch, temp, channel, height, width = x.shape
             inputs = x.reshape(batch * temp, channel, height, width)
             framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1).transpose(1, 2)
+            framewise = framewise.reshape(batch, temp, -1)
         else:
             # frame-wise features
             framewise = x
 
-        conv1d_outputs = self.conv1d(framewise, len_x)
+        conv1d_outputs = self.conv1d(framewise.transpose(1, 2), len_x)
         # x: T, B, C
         x = conv1d_outputs["visual_feat"]
         lgt = conv1d_outputs["feat_len"]
@@ -174,6 +174,11 @@ class SLRModel(nn.Module):
                     ret_dict["sequence_logits"].detach(),
                     use_blank=False,
                 )
+            elif k == "Smoothing":
+                sta = ret_dict["framewise_features"][:, :-1, :]
+                end = ret_dict["framewise_features"][:, 1:, :]
+                l = - self.loss["Smoothing"](sta, end).log().mean()
+                l = weight * l
             loss_kv[f"Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
                 loss += l
@@ -182,6 +187,8 @@ class SLRModel(nn.Module):
     def criterion_init(self):
         self.loss["CTCLoss"] = torch.nn.CTCLoss(reduction="none", zero_infinity=False)
         self.loss["distillation"] = SeqKD(T=8)
+        self.loss["Smoothing"] = torch.nn.CosineSimilarity(dim=2, eps=1e-6)
+        
         return self.loss
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False):
