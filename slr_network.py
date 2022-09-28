@@ -28,6 +28,15 @@ class NormLinear(nn.Module):
         return outputs
 
 
+def pad(tensor, length):
+    return torch.cat(
+        [
+            tensor,
+            tensor.new(length - tensor.size(0), *tensor.size()[1:]).zero_(),
+        ]
+    )
+
+
 class SLRModel(nn.Module):
     def __init__(
         self,
@@ -132,14 +141,15 @@ class SLRModel(nn.Module):
         conv1d_outputs = self.conv1d(framewise, len_x)
         # x: T, B, C
         x = conv1d_outputs["visual_feat"]
-        lgt = conv1d_outputs["feat_len"]
+        lgt = conv1d_outputs["feat_len"].int()
         tm_outputs = self.temporal_model(x, lgt)
         l2r_tm_outputs = self.l2r_temporal_model(x, lgt)
-        r2l_tm_outputs = self.r2l_temporal_model(torch.flip(x, [0]), lgt)
+        r2l_x = torch.stack([pad(torch.flip(x[:lgt[i], i, :], [0]), lgt[0]) for i in range(len(lgt))], dim=1)
+        r2l_tm_outputs = self.r2l_temporal_model(r2l_x, lgt)
         outputs = self.classifier(tm_outputs["predictions"])
         l2r_outputs = self.classifier(l2r_tm_outputs["predictions"])
         r2l_outputs = self.classifier(r2l_tm_outputs["predictions"])
-        r2l_outputs = torch.flip(r2l_outputs, [0])
+        r2l_outputs = torch.stack([pad(torch.flip(r2l_outputs[-lgt[i]:, i, :], [0]), lgt[0]) for i in range(len(lgt))], dim=1)
         pred = (
             None
             if self.training
