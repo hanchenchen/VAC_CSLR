@@ -70,6 +70,8 @@ class SLRModel(nn.Module):
             num_hidden_layers=2, hidden_size=hidden_size, num_attention_heads=8
         )
         self.temporal_model = BertModel(configuration)
+        self.l2r_temporal_model = BertModel(configuration)
+        self.r2l_temporal_model = BertModel(configuration)
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
@@ -131,11 +133,11 @@ class SLRModel(nn.Module):
         tm_outputs = self.temporal_model(
             inputs_embeds=x.transpose(0, 1), attention_mask=attention_mask
         ).last_hidden_state.permute(1, 0, 2)
-        l2r_tm_outputs = self.temporal_model(
+        l2r_tm_outputs = self.l2r_temporal_model(
             inputs_embeds=x.transpose(0, 1),
             attention_mask=torch.tril(attention_mask, diagonal=0),
         ).last_hidden_state.permute(1, 0, 2)
-        r2l_tm_outputs = self.temporal_model(
+        r2l_tm_outputs = self.r2l_temporal_model(
             inputs_embeds=x.transpose(0, 1),
             attention_mask=torch.triu(attention_mask, diagonal=0),
         ).last_hidden_state.permute(1, 0, 2)
