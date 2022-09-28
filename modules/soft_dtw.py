@@ -91,7 +91,8 @@ class SoftDTW(torch.nn.Module):
         x = x.unsqueeze(2).expand(-1, n, m, d)
         y = y.unsqueeze(1).expand(-1, n, m, d)
         dist = torch.pow(x - y, 2).sum(3)
-        dist = 1.0 - F.cosine_similarity(x, y, dim=3)
+        dist = F.cosine_similarity(x, y, dim=3) / 0.1
+        dist = - dist.softmax(-1).log()
         return dist
 
     def forward(self, x, y):

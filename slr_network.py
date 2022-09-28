@@ -248,6 +248,12 @@ class SLRModel(nn.Module):
                         ret_dict["l2r_logits"].transpose(0, 1),
                         ret_dict["r2l_logits"].transpose(0, 1),
                     ).mean()
+                ) + (
+                    weight
+                    * self.loss["SoftDTW"](
+                        ret_dict["r2l_logits"].transpose(0, 1),
+                        ret_dict["l2r_logits"].transpose(0, 1),
+                    ).mean()
                 ) 
 
             loss_kv[f"Loss/{k}"] = l.item()
