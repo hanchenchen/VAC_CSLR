@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modules.soft_dtw import SoftDTW
 
 
 class SeqKD(nn.Module):

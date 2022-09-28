@@ -6,7 +6,7 @@ import torchvision.models as models
 
 import utils
 from modules import BiLSTMLayer, TemporalConv
-from modules.criterions import SeqKD
+from modules.criterions import SeqKD, SoftDTW
 
 
 class Identity(nn.Module):
@@ -215,6 +215,31 @@ class SLRModel(nn.Module):
                         label_lgt.cpu().int(),
                     ).mean()
                 )
+            elif k == "SoftDTW-bidire-unidire":
+                # x: T, B, C
+                l = (
+                    weight
+                    * self.loss["SoftDTW"](
+                        ret_dict["l2r_logits"].transpose(0, 1),
+                        ret_dict["sequence_logits"].transpose(0, 1).detach(),
+                    ).mean()
+                ) + (
+                    weight
+                    * self.loss["SoftDTW"](
+                        ret_dict["r2l_logits"].transpose(0, 1),
+                        ret_dict["sequence_logits"].transpose(0, 1).detach(),
+                    ).mean()
+                )
+            elif k == "SoftDTW-unidire":
+                # x: T, B, C
+                l = (
+                    weight
+                    * self.loss["SoftDTW"](
+                        ret_dict["l2r_logits"].transpose(0, 1),
+                        ret_dict["r2l_logits"].transpose(0, 1),
+                    ).mean()
+                ) 
+
             loss_kv[f"Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
                 loss += l
@@ -223,6 +248,7 @@ class SLRModel(nn.Module):
     def criterion_init(self):
         self.loss["CTCLoss"] = torch.nn.CTCLoss(reduction="none", zero_infinity=False)
         self.loss["distillation"] = SeqKD(T=8)
+        self.loss["SoftDTW"] = SoftDTW(gamma=1.0, normalize=True)
         return self.loss
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False):
