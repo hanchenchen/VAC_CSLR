@@ -36,6 +36,7 @@ def pad(tensor, length):
         ]
     )
 
+
 class SLRModel(nn.Module):
     def __init__(
         self,
@@ -95,6 +96,8 @@ class SLRModel(nn.Module):
             self.classifier = nn.Linear(hidden_size, self.num_classes)
         if share_classifier:
             self.conv1d.fc = self.classifier
+        self.gates = nn.Parameter(torch.tensor([1.0, 1.0, 1.0, 1.0]))
+        self.final_classifier = nn.Linear(hidden_size, self.num_classes)
 
     #     self.register_backward_hook(self.backward_hook)
 
@@ -141,18 +144,42 @@ class SLRModel(nn.Module):
         # x: T, B, C
         x = conv1d_outputs["visual_feat"]
         lgt = conv1d_outputs["feat_len"].int()
-        tm_outputs = self.temporal_model(x, lgt)
-        l2r_tm_outputs = self.l2r_temporal_model(x, lgt)
-        r2l_x = torch.stack([pad(torch.flip(x[:lgt[i], i, :], [0]), lgt[0]) for i in range(len(lgt))], dim=1)
-        r2l_tm_outputs = self.r2l_temporal_model(r2l_x, lgt)
-        outputs = self.classifier(tm_outputs["predictions"])
-        l2r_outputs = self.classifier(l2r_tm_outputs["predictions"])
-        r2l_outputs = self.classifier(r2l_tm_outputs["predictions"])
-        r2l_outputs = torch.stack([pad(torch.flip(r2l_outputs[:lgt[i], i, :], [0]), lgt[0]) for i in range(len(lgt))], dim=1)
+        tm_outputs = self.temporal_model(x, lgt)["predictions"]
+        l2r_tm_outputs = self.l2r_temporal_model(x, lgt)["predictions"]
+        r2l_x = torch.stack(
+            [pad(torch.flip(x[: lgt[i], i, :], [0]), lgt[0]) for i in range(len(lgt))],
+            dim=1,
+        )
+        r2l_tm_outputs = self.r2l_temporal_model(r2l_x, lgt)["predictions"]
+        r2l_tm_outputs = torch.stack(
+            [
+                pad(torch.flip(r2l_tm_outputs[: lgt[i], i, :], [0]), lgt[0])
+                for i in range(len(lgt))
+            ],
+            dim=1,
+        )
+
+        all_output = sum(
+            [
+                w * o
+                for w, o in zip(
+                    self.gates.softmax(-1),
+                    [x, tm_outputs, l2r_tm_outputs, r2l_tm_outputs],
+                )
+            ]
+        )
+        weighted_logits = self.final_classifier(all_output)
+
+        outputs = self.classifier(tm_outputs)
+        l2r_outputs = self.classifier(l2r_tm_outputs)
+        r2l_outputs = self.classifier(r2l_tm_outputs)
+
         pred = (
             None
             if self.training
-            else self.decoder.decode(outputs, lgt, batch_first=False, probs=False)
+            else self.decoder.decode(
+                weighted_logits, lgt, batch_first=False, probs=False
+            )
         )
         conv_pred = (
             None
@@ -170,6 +197,7 @@ class SLRModel(nn.Module):
             "sequence_logits": outputs,
             "l2r_logits": l2r_outputs,
             "r2l_logits": r2l_outputs,
+            "weighted_logits": weighted_logits,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
         }
@@ -193,6 +221,16 @@ class SLRModel(nn.Module):
                     weight
                     * self.loss["CTCLoss"](
                         ret_dict["sequence_logits"].log_softmax(-1),
+                        label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
+                )
+            elif k == "WeightedCTC":
+                l = (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["weighted_logits"].log_softmax(-1),
                         label.cpu().int(),
                         ret_dict["feat_len"].cpu().int(),
                         label_lgt.cpu().int(),
@@ -247,11 +285,16 @@ class SLRModel(nn.Module):
                         ret_dict["l2r_logits"].transpose(0, 1),
                         ret_dict["r2l_logits"].transpose(0, 1),
                     ).mean()
-                ) 
+                )
 
             loss_kv[f"Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
                 loss += l
+        w = self.gates.softmax(-1)
+        loss_kv[f"Weight/Conv"] = w[0].item()
+        loss_kv[f"Weight/BiDire"] = w[1].item()
+        loss_kv[f"Weight/L2R"] = w[2].item()
+        loss_kv[f"Weight/R2L"] = w[3].item()
         return loss, loss_kv
 
     def criterion_init(self):
