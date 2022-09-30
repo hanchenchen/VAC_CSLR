@@ -21,6 +21,11 @@ from modules.sync_batchnorm import convert_model
 from seq_scripts import seq_eval, seq_feature_generation, seq_train
 from utils.dist import init_dist, master_only
 
+def adjust_learning_rate(optimizer):
+    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    for param_group in optimizer.optimizer.param_groups:
+        param_group['lr'] = param_group['lr'] * 0.7
+
 
 class Processor:
     def __init__(self, arg):
@@ -44,7 +49,7 @@ class Processor:
             self.recoder.print_log("Parameters:\n{}\n".format(str(vars(self.arg))))
             seq_model_list = []
             for epoch in range(
-                self.arg.optimizer_args["start_epoch"], self.arg.num_epoch
+                self.arg.optimizer_args["start_epoch"], int(1e9)
             ):
                 save_model = epoch % self.arg.save_interval == 0
                 eval_model = epoch % self.arg.eval_interval == 0
@@ -96,6 +101,10 @@ class Processor:
                     for path in seq_model_list[3:]:
                         os.remove(path)
                     seq_model_list = seq_model_list[:3]
+                    if model_path not in seq_model_list:
+                        adjust_learning_rate(self.optimizer)
+                        if optimizer.optimizer.param_groups[0]["lr"] < 1e-7:
+                            break
                     print("seq_model_list", seq_model_list)
         elif self.arg.phase == "test":
             if self.arg.load_weights is None and self.arg.load_checkpoints is None:

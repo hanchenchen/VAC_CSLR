@@ -79,7 +79,8 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
                     **loss_kv,
                 }
             )
-        optimizer.scheduler.step()
+        if epoch_idx == 0:
+            optimizer.scheduler.step()
 
 
 def data_to_device(data):
