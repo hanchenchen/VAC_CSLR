@@ -52,7 +52,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         label = data[2]
         label_lgt = data[3]
         loss, loss_kv = model(
-            vid, vid_lgt, label=label, label_lgt=label_lgt, return_loss=True
+            vid, vid_lgt, label=label, label_lgt=label_lgt, return_loss=True, phase='Train'
         )
         if np.isinf(loss.item()) or np.isnan(loss.item()):
             print(data[-1])
@@ -117,7 +117,7 @@ def seq_eval(
         label = data[2]
         label_lgt = data[3]
         with torch.no_grad():
-            ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt)
+            ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
 
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
         total_sent += ret_dict["recognized_sents"]
