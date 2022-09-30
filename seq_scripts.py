@@ -125,7 +125,7 @@ def seq_eval(
         total_sent += ret_dict["recognized_sents"]
         total_conv_sent += ret_dict["conv_sents"]
     for k, v in loss_kv_dict.items():
-        loss_kv_dict[k] = mean(v)
+        loss_kv_dict[k] = sum(v)/len(v)
     gather_total_info = [None for _ in range(dist.get_world_size())]
     gather_total_sent = [None for _ in range(dist.get_world_size())]
     gather_total_conv_sent = [None for _ in range(dist.get_world_size())]
@@ -152,6 +152,7 @@ def seq_eval(
     for i in gather_total_conv_sent:
         total_conv_sent += i
     lstm_ret = 100.0
+    conv_ret = 100.0
     if dist.get_rank() == 0:
         try:
             python_eval = True if evaluate_tool == "python" else False
@@ -187,6 +188,7 @@ def seq_eval(
         except:
             print("Unexpected error:", sys.exc_info()[0])
             lstm_ret = 100.0
+            conv_ret = 100.0
         finally:
             pass
     recoder.print_log(
