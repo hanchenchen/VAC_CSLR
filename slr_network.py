@@ -161,7 +161,29 @@ class SLRModel(nn.Module):
                 conv1d_outputs["conv_logits"], lgt, batch_first=False, probs=False
             )
         )
-
+        # self.decoder.visualize_maxdecode(outputs.permute(1, 0, 2), lgt, x, label, label_lgt, filename="outputs")
+        # self.decoder.visualize_maxdecode(outputs.permute(1, 0, 2), lgt, x, filename="outputs")
+        # self.decoder.visualize_maxdecode(conv1d_outputs["conv_logits"].permute(1, 0, 2), lgt, x, label, label_lgt, filename="conv1d_outputs")
+        # self.decoder.visualize_maxdecode(conv1d_outputs["conv_logits"].permute(1, 0, 2), lgt, x, filename="conv1d_outputs")
+        self.decoder.visualize_maxdecode(l2r_outputs.permute(1, 0, 2), lgt, x, label, label_lgt, filename="l2r_outputs1")
+        # self.decoder.visualize_maxdecode(l2r_outputs.permute(1, 0, 2), lgt, x, filename="l2r_outputs")
+        self.decoder.visualize_maxdecode(r2l_outputs.permute(1, 0, 2), lgt, x, label, label_lgt, filename="r2l_outputs1")
+        # self.decoder.visualize_maxdecode(r2l_outputs.permute(1, 0, 2), lgt, x, filename="r2l_outputs")
+        exit()
+        l2r_sents = (
+            None
+            if self.training
+            else self.decoder.decode(
+                l2r_outputs, lgt, batch_first=False, probs=False
+            )
+        )
+        r2l_sents = (
+            None
+            if self.training
+            else self.decoder.decode(
+                r2l_outputs, lgt, batch_first=False, probs=False
+            )
+        )
         return {
             "framewise_features": framewise,
             "visual_features": x,
@@ -172,6 +194,8 @@ class SLRModel(nn.Module):
             "r2l_logits": r2l_outputs,
             "conv_sents": conv_pred,
             "recognized_sents": pred,
+            "l2r_sents": l2r_sents,
+            "r2l_sents": r2l_sents,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt):
