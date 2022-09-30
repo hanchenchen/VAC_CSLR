@@ -103,7 +103,7 @@ class Processor:
                     seq_model_list = seq_model_list[:3]
                     if model_path not in seq_model_list:
                         adjust_learning_rate(self.optimizer)
-                        if optimizer.optimizer.param_groups[0]["lr"] < 1e-7:
+                        if self.optimizer.optimizer.param_groups[0]["lr"] < 1e-7:
                             break
                     print("seq_model_list", seq_model_list)
         elif self.arg.phase == "test":
