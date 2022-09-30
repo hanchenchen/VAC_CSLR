@@ -119,12 +119,12 @@ def seq_eval(
         label_lgt = data[3]
         with torch.no_grad():
             ret_dict, (loss, loss_kv) = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
-        for k, v in reduce_loss_dict(loss_kv):
+        for k, v in reduce_loss_dict(loss_kv).items():
             loss_kv_dict[k].append(v)
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
         total_sent += ret_dict["recognized_sents"]
         total_conv_sent += ret_dict["conv_sents"]
-    for k, v in loss_kv_dict:
+    for k, v in loss_kv_dict.items():
         loss_kv_dict[k] = mean(v)
     gather_total_info = [None for _ in range(dist.get_world_size())]
     gather_total_sent = [None for _ in range(dist.get_world_size())]
