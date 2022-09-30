@@ -303,7 +303,7 @@ class SLRModel(nn.Module):
                 )
             elif k == "DecoderReg":
                 pred = ret_dict["reg_logits"]
-                target = ret_dict["framewise_features"].detach()
+                target = ret_dict["framewise_features"]
                 mask = ret_dict["mask"] * ret_dict["attention_mask"]
                 mean = target.mean(dim=-1, keepdim=True)
                 var = target.var(dim=-1, keepdim=True)
