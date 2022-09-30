@@ -30,7 +30,7 @@ class Recorder(object):
             config=_config,
             id=wandb.util.generate_id(),
             # group=_config.work_dir.split('/')[-4],
-            job_type=_config.work_dir.split('/')[-3],
+            job_type=_config.work_dir.split("/")[-3],
         )
 
     @master_only
