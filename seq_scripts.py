@@ -100,7 +100,7 @@ def data_to_device(data):
     else:
         raise ValueError(data.shape, "Unknown Dtype: {}".format(data.dtype))
 
-
+from collections import defaultdict
 @torch.no_grad()
 def seq_eval(
     cfg, loader, model, mode, epoch, work_dir, recoder, evaluate_tool="python"
@@ -109,6 +109,7 @@ def seq_eval(
     total_sent = []
     total_info = []
     total_conv_sent = []
+    loss_kv_dict = defaultdict(list)
     stat = {i: [0, 0] for i in range(len(loader.dataset.dict))}
     for batch_idx, data in enumerate(tqdm(loader)):
         recoder.record_timer("device")
@@ -117,12 +118,14 @@ def seq_eval(
         label = data[2]
         label_lgt = data[3]
         with torch.no_grad():
-            ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
-
+            ret_dict, (loss, loss_kv) = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
+        for k, v in reduce_loss_dict(loss_kv):
+            loss_kv_dict[k].append(v)
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
         total_sent += ret_dict["recognized_sents"]
         total_conv_sent += ret_dict["conv_sents"]
-
+    for k, v in loss_kv_dict:
+        loss_kv_dict[k] = mean(v)
     gather_total_info = [None for _ in range(dist.get_world_size())]
     gather_total_sent = [None for _ in range(dist.get_world_size())]
     gather_total_conv_sent = [None for _ in range(dist.get_world_size())]
@@ -187,12 +190,14 @@ def seq_eval(
         finally:
             pass
     recoder.print_log(
-        f"Epoch {epoch}, {mode} {lstm_ret: 2.2f}%", f"{work_dir}/{mode}.txt"
+        f"Epoch {epoch}, {mode} WER {lstm_ret: 2.2f}%  {mode} Conv WER {conv_ret: 2.2f}% ", f"{work_dir}/{mode}.txt"
     )
     recoder.print_wandb(
         {
             "epoch": epoch,
+            f"{mode} Conv WER": conv_ret,
             f"{mode} WER": lstm_ret,
+            **loss_kv_dict
         }
     )
     return lstm_ret

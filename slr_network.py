@@ -335,4 +335,4 @@ class SLRModel(nn.Module):
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
         else:
-            return res
+            return res, self.criterion_calculation(res, label, label_lgt, phase=phase)
