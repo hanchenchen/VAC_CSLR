@@ -15,8 +15,8 @@ save_interval: 1
 # python in default
 evaluate_tool: sclite
 loss_weights:
-  DecoderReg: 100.0
-  DecoderCTC: 1.0
+  # DecoderReg: 100.0
+  # DecoderCTC: 1.0
   SeqCTC: 1.0
   # VAC
   # ConvCTC: 1.0

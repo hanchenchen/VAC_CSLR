@@ -261,6 +261,37 @@ class SLRModel(nn.Module):
             "recognized_sents": pred,
         }
 
+    def infer_wo_decoder(self, ret_dict):
+        x = ret_dict['framewise_features']
+        lgt = ret_dict['feat_len']
+        B, T, C = x.shape
+        attention_mask = torch.ones(B, T).to(x)
+        for b in range(B):
+            attention_mask[b][lgt[b].int() :] = 0
+
+        tm_outputs = self.temporal_model(
+            inputs_embeds=x, attention_mask=attention_mask
+        ).last_hidden_state
+
+        ctc_emb = tm_outputs
+        # append mask tokens to sequence
+
+        ctc_hs = tm_outputs
+
+        # predictor projection
+        ctc_logits = self.ctc_pred(ctc_hs).permute(1, 0, 2)
+
+        pred = (
+            None
+            if self.training
+            else self.decoder.decode(ctc_logits, lgt, batch_first=False, probs=False)
+        )
+
+        return {
+            "sequence_logits": ctc_logits,
+            "recognized_sents": pred,
+        }
+
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
         loss = 0
         loss_kv = {}
@@ -331,7 +362,7 @@ class SLRModel(nn.Module):
         x = x.to(self.device, non_blocking=True)
         # label = label.to(self.device, non_blocking=True)
         res = self.infer(x, len_x, label, label_lgt)
-        res.update(self.infer_wo_mask(res))
+        res.update(self.infer_wo_decoder(res))
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
         else:
