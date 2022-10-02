@@ -59,21 +59,21 @@ class SLRModel(nn.Module):
             num_classes=num_classes,
         )
         self.decoder = utils.Decode(gloss_dict, num_classes, "beam")
-        # self.temporal_model = BiLSTMLayer(
-        #     rnn_type="LSTM",
-        #     input_size=hidden_size,
-        #     hidden_size=hidden_size,
-        #     num_layers=2,
-        #     bidirectional=True,
-        # )
-        encoder_configuration = BertConfig(
-            num_hidden_layers=2,
+        self.temporal_model = BiLSTMLayer(
+            rnn_type="LSTM",
+            input_size=hidden_size,
             hidden_size=hidden_size,
-            num_attention_heads=8,
-            # hidden_dropout_prob=0.3,
-            # attention_probs_dropout_prob=0.3,
+            num_layers=2,
+            bidirectional=True,
         )
-        self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
+        # encoder_configuration = BertConfig(
+        #     num_hidden_layers=2,
+        #     hidden_size=hidden_size,
+        #     num_attention_heads=8,
+        #     # hidden_dropout_prob=0.3,
+        #     # attention_probs_dropout_prob=0.3,
+        # )
+        # self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
 
         decoder_configuration = BertConfig(
             num_hidden_layers=1,
@@ -272,11 +272,12 @@ class SLRModel(nn.Module):
         lgt = ret['feat_len']
         attention_mask = ret['attention_mask']
 
-        encoded_hs = self.temporal_model(
-            inputs_embeds=x, attention_mask=attention_mask
-        ).last_hidden_state
+        # encoded_hs = self.temporal_model(
+        #     inputs_embeds=x, attention_mask=attention_mask
+        # ).last_hidden_state.permute(1, 0, 2)
+        encoded_hs = self.temporal_model(x.permute(1, 0, 2), lgt)
 
-        logits = self.classifier(encoded_hs).permute(1, 0, 2)
+        logits = self.classifier(encoded_hs["predictions"])
         pred = (
             None
             if self.training
