@@ -343,8 +343,8 @@ class SLRModel(nn.Module):
 
                 l = (l1 + l2) * 0.5
             elif k == "SimsiamAlign":
-                pred = ret_dict["conv_logits"]
-                target = ret_dict["sequence_logits"]
+                pred = ret_dict["conv_logits"].permute(1, 0, 2)
+                target = ret_dict["sequence_logits"].permute(1, 0, 2)
                 mask = ret_dict["attention_mask"]
                 # mean = target.mean(dim=-1, keepdim=True)
                 # var = target.var(dim=-1, keepdim=True)
