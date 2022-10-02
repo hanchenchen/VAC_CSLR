@@ -91,6 +91,9 @@ class SLRModel(nn.Module):
         self.ctc_decoder = BertModel(decoder_configuration)
         self.ctc_pred = nn.Linear(hidden_size, self.num_classes)
 
+        self.h1 = nn.Linear(hidden_size, hidden_size)
+        self.h2 = nn.Linear(hidden_size, hidden_size)
+
         torch.nn.init.normal_(self.reg_mask_token, std=.02)
         torch.nn.init.normal_(self.ctc_mask_token, std=.02)
         # if weight_norm:
@@ -141,7 +144,7 @@ class SLRModel(nn.Module):
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))
         
-        noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
+        noise = torch.rand(N, L, device=x.device) + (1-attention_mask)  # noise in [0, 1]
         
         # sort noise for each sample
         ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
@@ -303,16 +306,21 @@ class SLRModel(nn.Module):
                 )
             elif k == "DecoderReg":
                 pred = ret_dict["reg_logits"]
-                target = ret_dict["framewise_features"].detach()
+                target = ret_dict["framewise_features"]
                 mask = ret_dict["mask"] * ret_dict["attention_mask"]
-                mean = target.mean(dim=-1, keepdim=True)
-                var = target.var(dim=-1, keepdim=True)
-                target = (target - mean) / (var + 1.e-6)**.5
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
 
-                l = (pred - target) ** 2
+                l = (self.h1(pred) - target.detach()) ** 2
                 l = l.mean(dim=-1)  # [N, L], mean loss per patch
+                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
-                l = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+                l = (pred.detach() - self.h2(target)) ** 2
+                l = l.mean(dim=-1)  # [N, L], mean loss per patch
+                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = (l1 + l2) * 0.5
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
