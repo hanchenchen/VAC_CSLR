@@ -70,8 +70,8 @@ class SLRModel(nn.Module):
             num_hidden_layers=2,
             hidden_size=hidden_size,
             num_attention_heads=8,
-            hidden_dropout_prob=0.6,
-            attention_probs_dropout_prob=0.6,
+            # hidden_dropout_prob=0.6,
+            # attention_probs_dropout_prob=0.6,
         )
         self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
 
@@ -339,6 +339,21 @@ class SLRModel(nn.Module):
                 l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = 1 - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = (l1 + l2) * 0.5
+            elif k == "SimsiamAlign":
+                pred = ret_dict["conv_logits"]
+                target = ret_dict["sequence_logits"]
+                mask = ret_dict["attention_mask"]
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
+
+                l = - F.cosine_similarity(pred, target.detach(), dim=2)
+                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = - F.cosine_similarity(pred.detach(), target, dim=2)
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
