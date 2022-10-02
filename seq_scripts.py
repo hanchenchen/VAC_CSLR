@@ -13,7 +13,7 @@ from evaluation.slr_eval.wer_calculation import evaluate
 from utils.dist import master_only
 
 
-def reduce_loss_dict(loss_dict):
+def reduce_loss_dict(loss_dict, phase='Train'):
     """reduce loss dict.
 
     In distributed training, it averages the losses among different GPUs .
@@ -38,7 +38,7 @@ def reduce_loss_dict(loss_dict):
         for name, value in loss_dict.items():
             log_dict[name] = value.mean().item()
             loss_sum += log_dict[name]
-        log_dict["Loss/sum"] = loss_sum
+        log_dict[f"{phase}/Loss/sum"] = loss_sum
         return log_dict
 
 
@@ -64,7 +64,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         # del vid, vid_lgt, label, label_lgt
         # torch.cuda.empty_cache()
         if batch_idx % recoder.log_interval == 0:
-            loss_kv = reduce_loss_dict(loss_kv)
+            loss_kv = reduce_loss_dict(loss_kv, phase='Train')
             recoder.print_log(
                 "\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:f}".format(
                     epoch_idx,
@@ -83,7 +83,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
                     **loss_kv,
                 }
             )
-        optimizer.scheduler.step()
+    optimizer.scheduler.step()
 
 
 def data_to_device(data):
@@ -119,11 +119,11 @@ def seq_eval(
         label_lgt = data[3]
         with torch.no_grad():
             ret_dict, (loss, loss_kv) = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
-        for k, v in reduce_loss_dict(loss_kv).items():
+        for k, v in reduce_loss_dict(loss_kv, phase='Val').items():
             loss_kv_dict[k].append(v)
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
-        total_sent += ret_dict["recognized_sents"]
-        total_conv_sent += ret_dict["conv_sents"]
+        total_sent += ret_dict["ctc_pred"]
+        total_conv_sent += ret_dict["conv_pred"]
     for k, v in loss_kv_dict.items():
         loss_kv_dict[k] = sum(v)/len(v)
     gather_total_info = [None for _ in range(dist.get_world_size())]

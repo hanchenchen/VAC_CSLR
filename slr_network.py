@@ -50,14 +50,14 @@ class SLRModel(nn.Module):
         self.num_classes = num_classes
         self.loss_weights = loss_weights
         self.conv2d = getattr(models, c2d_type)(pretrained=True)
-        self.conv2d.fc = nn.Linear(512, hidden_size)
-        # self.conv1d = TemporalConv(
-        #     input_size=512,
-        #     hidden_size=hidden_size,
-        #     conv_type=conv_type,
-        #     use_bn=use_bn,
-        #     num_classes=num_classes,
-        # )
+        self.conv2d.fc = nn.Identity()
+        self.conv1d = TemporalConv(
+            input_size=512,
+            hidden_size=hidden_size,
+            conv_type=conv_type,
+            use_bn=use_bn,
+            num_classes=num_classes,
+        )
         self.decoder = utils.Decode(gloss_dict, num_classes, "beam")
         # self.temporal_model = BiLSTMLayer(
         #     rnn_type="LSTM",
@@ -73,7 +73,8 @@ class SLRModel(nn.Module):
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
-        self.temporal_model = BertModel(encoder_configuration)
+        self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
+
         decoder_configuration = BertConfig(
             num_hidden_layers=1,
             hidden_size=hidden_size,
@@ -81,29 +82,30 @@ class SLRModel(nn.Module):
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
-        self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
-        self.reg_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
-        self.reg_decoder = BertModel(decoder_configuration)
-        self.reg_pred = nn.Linear(hidden_size, hidden_size)
-        
-        self.ctc_embed = nn.Linear(hidden_size, hidden_size, bias=True)
-        self.ctc_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
-        self.ctc_decoder = BertModel(decoder_configuration)
-        self.ctc_pred = nn.Linear(hidden_size, self.num_classes)
+        if 'DecoderReg' in self.loss_weights:
+            self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
+            self.reg_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
+            self.reg_decoder = BertModel(decoder_configuration)
+            self.reg_pred = nn.Linear(hidden_size, hidden_size)
+            self.h1 = nn.Linear(hidden_size, hidden_size)
+            self.h2 = nn.Linear(hidden_size, hidden_size)
+            torch.nn.init.normal_(self.reg_mask_token, std=.02)
 
-        self.h1 = nn.Linear(hidden_size, hidden_size)
-        self.h2 = nn.Linear(hidden_size, hidden_size)
+        if 'DecoderCTC' in self.loss_weights:
+            self.ctc_embed = nn.Linear(hidden_size, hidden_size, bias=True)
+            self.ctc_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
+            self.ctc_decoder = BertModel(decoder_configuration)
+            self.ctc_pred = nn.Linear(hidden_size, self.num_classes)
+            torch.nn.init.normal_(self.ctc_mask_token, std=.02)
 
-        torch.nn.init.normal_(self.reg_mask_token, std=.02)
-        torch.nn.init.normal_(self.ctc_mask_token, std=.02)
-        # if weight_norm:
-        #     self.classifier = NormLinear(hidden_size, self.num_classes)
-        #     self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
-        # else:
-        #     self.classifier = nn.Linear(hidden_size, self.num_classes)
-        #     self.classifier = nn.Linear(hidden_size, self.num_classes)
-        # if share_classifier:
-        #     self.conv1d.fc = self.classifier
+        if weight_norm:
+            self.classifier = NormLinear(hidden_size, self.num_classes)
+            self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
+        else:
+            self.classifier = nn.Linear(hidden_size, self.num_classes)
+            self.classifier = nn.Linear(hidden_size, self.num_classes)
+        if share_classifier:
+            self.conv1d.fc = self.classifier
 
     #     self.register_backward_hook(self.backward_hook)
 
@@ -163,56 +165,75 @@ class SLRModel(nn.Module):
 
         return x_masked, mask, ids_restore, masked_attention_mask, ids_keep
 
-    def infer(self, x, len_x, label=None, label_lgt=None):
-        if len(x.shape) == 5:
-            # videos
-            batch, temp, channel, height, width = x.shape
-            inputs = x.reshape(batch * temp, channel, height, width)
-            framewise = self.masked_bn(inputs, len_x)
-            framewise = framewise.reshape(batch, temp, -1)
-        else:
-            # frame-wise features
-            framewise = x
+    def forward_conv_layer(self, x, len_x):
+        # embed frames by resnet
+        batch, temp, channel, height, width = x.shape
+        inputs = x.reshape(batch * temp, channel, height, width)
+        frame_feat = self.masked_bn(inputs, len_x)
+        frame_feat = frame_feat.reshape(batch, temp, -1)
 
-        x = framewise
-        lgt = len_x
-        B, T, C = x.shape
+        conv1d_outputs = self.conv1d(frame_feat.transpose(1, 2), len_x)
+        visual_feat = conv1d_outputs["visual_feat"].permute(1, 0, 2)
+        lgt = conv1d_outputs["feat_len"].int()
+
+        B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
         for b in range(batch):
-            attention_mask[b][lgt[b].int() :] = 0
+            attention_mask[b][lgt[b]:] = 0
+
+        conv_pred = (
+            None
+            if self.training
+            else self.decoder.decode(
+                conv1d_outputs["conv_logits"], lgt, batch_first=False, probs=False
+            )
+        )
+        
+        return {
+            "frame_feat": frame_feat,
+            "frame_num": len_x,
+            "visual_feat": visual_feat,
+            "feat_len": lgt,
+            "conv_logits": conv1d_outputs["conv_logits"],
+            "conv_pred": conv_pred,
+            "attention_mask": attention_mask,
+        }
+
+    def forward_masked_encoder(self, ret):
+
+        x = ret['visual_feat']
+        lgt = ret['feat_len']
+        attention_mask = ret['attention_mask']
 
         x_masked, mask, ids_restore, masked_attention_mask, ids_keep = self.random_masking(x, mask_ratio=0.9, attention_mask=attention_mask)
-        tm_outputs = self.temporal_model(
+        masked_hs = self.temporal_model(
             inputs_embeds=x_masked, attention_mask=masked_attention_mask, position_ids=ids_keep
         ).last_hidden_state
 
-        ctc_emb = self.ctc_embed(tm_outputs)
+        return {
+            "masked_hs": masked_hs,
+            "ids_restore": ids_restore,
+            "mask": mask,
+        }
+
+    def forward_ctc_decoder(self, ret):
+        x = ret['masked_hs']
+        attention_mask = ret['attention_mask']
+        ids_restore = ret['ids_restore']
+
+        ctc_emb = self.ctc_embed(x)
         # append mask tokens to sequence
-        mask_tokens = self.ctc_mask_token.repeat(ctc_emb.shape[0], ids_restore.shape[1] + 1 - ctc_emb.shape[1], 1)
+        mask_tokens = self.ctc_mask_token.repeat(ctc_emb.shape[0], ids_restore.shape[1] - ctc_emb.shape[1], 1)
         ctc_emb = torch.cat([ctc_emb, mask_tokens], dim=1)  # no cls token
         ctc_emb = torch.gather(ctc_emb, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, ctc_emb.shape[2]))  # unshuffle
 
         ctc_hs = self.ctc_decoder(
             inputs_embeds=ctc_emb, attention_mask=attention_mask
         ).last_hidden_state
-
         # predictor projection
         ctc_logits = self.ctc_pred(ctc_hs).permute(1, 0, 2)
 
-        reg_emb = self.reg_embed(tm_outputs)
-        # append mask tokens to sequence
-        mask_tokens = self.reg_mask_token.repeat(reg_emb.shape[0], ids_restore.shape[1] + 1 - reg_emb.shape[1], 1)
-        reg_emb = torch.cat([reg_emb, mask_tokens], dim=1)  # no cls token
-        reg_emb = torch.gather(reg_emb, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, reg_emb.shape[2]))  # unshuffle
-
-        reg_hs = self.reg_decoder(
-            inputs_embeds=reg_emb, attention_mask=attention_mask
-        ).last_hidden_state
-
-        # predictor projection
-        reg_logits = self.reg_pred(reg_hs)
-
-        conv_pred = (
+        decoder_ctc_pred = (
             None
             if self.training
             else self.decoder.decode(
@@ -221,47 +242,49 @@ class SLRModel(nn.Module):
         )
 
         return {
-            "framewise_features": framewise,
-            "visual_features": x,
-            "feat_len": lgt,
-            "mask": mask,
-            "attention_mask": attention_mask,
-            "ctc_logits": ctc_logits,
-            "reg_logits": reg_logits,
-            "conv_sents": conv_pred,
+            "decoder_ctc_logits": ctc_logits,
+            "decoder_ctc_pred": decoder_ctc_pred,
         }
 
-    def infer_wo_mask(self, ret_dict):
-        x = ret_dict['framewise_features']
-        lgt = ret_dict['feat_len']
-        B, T, C = x.shape
-        attention_mask = torch.ones(B, T).to(x)
-        for b in range(B):
-            attention_mask[b][lgt[b].int() :] = 0
+    def forward_reg_decoder(self, ret):
+        x = ret['masked_hs']
+        attention_mask = ret['attention_mask']
+        ids_restore = ret['ids_restore']
 
-        tm_outputs = self.temporal_model(
+        reg_emb = self.reg_embed(x)
+        # append mask tokens to sequence
+        mask_tokens = self.reg_mask_token.repeat(reg_emb.shape[0], ids_restore.shape[1] - reg_emb.shape[1], 1)
+        reg_emb = torch.cat([reg_emb, mask_tokens], dim=1)  # no cls token
+        reg_emb = torch.gather(reg_emb, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, reg_emb.shape[2]))  # unshuffle
+
+        reg_hs = self.reg_decoder(
+            inputs_embeds=reg_emb, attention_mask=attention_mask
+        ).last_hidden_state
+        # predictor projection
+        reg_logits = self.reg_pred(reg_hs)
+
+        return {
+            "decoder_reg_logits": reg_logits,
+        }
+
+    def forward_encoder(self, ret):
+        x = ret['visual_feat']
+        lgt = ret['feat_len']
+        attention_mask = ret['attention_mask']
+
+        encoded_hs = self.temporal_model(
             inputs_embeds=x, attention_mask=attention_mask
         ).last_hidden_state
 
-        ctc_emb = self.ctc_embed(tm_outputs)
-        # append mask tokens to sequence
-
-        ctc_hs = self.ctc_decoder(
-            inputs_embeds=ctc_emb, attention_mask=attention_mask
-        ).last_hidden_state
-
-        # predictor projection
-        ctc_logits = self.ctc_pred(ctc_hs).permute(1, 0, 2)
-
+        logits = self.classifier(encoded_hs).permute(1, 0, 2)
         pred = (
             None
             if self.training
-            else self.decoder.decode(ctc_logits, lgt, batch_first=False, probs=False)
+            else self.decoder.decode(logits, lgt, batch_first=False, probs=False)
         )
-
         return {
-            "sequence_logits": ctc_logits,
-            "recognized_sents": pred,
+            "sequence_logits": logits,
+            "ctc_pred": pred,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -292,7 +315,7 @@ class SLRModel(nn.Module):
                 l = (
                     weight
                     * self.loss["CTCLoss"](
-                        ret_dict["ctc_logits"].log_softmax(-1),
+                        ret_dict["decoder_ctc_logits"].log_softmax(-1),
                         label.cpu().int(),
                         ret_dict["feat_len"].cpu().int(),
                         label_lgt.cpu().int(),
@@ -305,8 +328,8 @@ class SLRModel(nn.Module):
                     use_blank=False,
                 )
             elif k == "DecoderReg":
-                pred = ret_dict["reg_logits"]
-                target = ret_dict["framewise_features"]
+                pred = ret_dict["decoder_reg_logits"]
+                target = ret_dict["visual_feat"]
                 mask = ret_dict["mask"] * ret_dict["attention_mask"]
                 # mean = target.mean(dim=-1, keepdim=True)
                 # var = target.var(dim=-1, keepdim=True)
@@ -336,8 +359,15 @@ class SLRModel(nn.Module):
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False, phase='val'):
         x = x.to(self.device, non_blocking=True)
         # label = label.to(self.device, non_blocking=True)
-        res = self.infer(x, len_x, label, label_lgt)
-        res.update(self.infer_wo_mask(res))
+        res = self.forward_conv_layer(x, len_x)
+        if 'DecoderReg' in self.loss_weights or 'DecoderCTC' in self.loss_weights:
+            res.update(self.forward_masked_encoder(res))
+        if 'SeqCTC' in self.loss_weights or 'Dist' in self.loss_weights:
+            res.update(self.forward_encoder(res))
+        if 'DecoderReg' in self.loss_weights:
+            res.update(self.forward_reg_decoder(res))
+        if 'DecoderCTC' in self.loss_weights:
+            res.update(self.forward_ctc_decoder(res))
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
         else:
