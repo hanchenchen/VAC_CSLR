@@ -313,11 +313,9 @@ class SLRModel(nn.Module):
                 # target = (target - mean) / (var + 1.e-6)**.5
 
                 l = 1 - F.cosine_similarity(self.h1(pred), target.detach(), dim=2)
-                l = l.mean(dim=-1)  # [N, L], mean loss per patch
                 l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = 1 - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
-                l = l.mean(dim=-1)  # [N, L], mean loss per patch
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
