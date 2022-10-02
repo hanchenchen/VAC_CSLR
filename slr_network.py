@@ -352,8 +352,8 @@ class SLRModel(nn.Module):
 
     def criterion_init(self):
         self.loss["CTCLoss"] = torch.nn.CTCLoss(reduction="none", zero_infinity=False)
-        # self.loss["distillation"] = SeqKD(T=8)
-        self.loss["MSE"] = nn.MSELoss()
+        self.loss["distillation"] = SeqKD(T=8)
+        # self.loss["MSE"] = nn.MSELoss()
         return self.loss
 
     def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False, phase='val'):
