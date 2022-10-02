@@ -181,7 +181,7 @@ class SLRModel(nn.Module):
         for b in range(batch):
             attention_mask[b][lgt[b].int() :] = 0
 
-        x_masked, mask, ids_restore, masked_attention_mask, ids_keep = self.random_masking(x, mask_ratio=0.75, attention_mask=attention_mask)
+        x_masked, mask, ids_restore, masked_attention_mask, ids_keep = self.random_masking(x, mask_ratio=0.9, attention_mask=attention_mask)
         tm_outputs = self.temporal_model(
             inputs_embeds=x_masked, attention_mask=masked_attention_mask, position_ids=ids_keep
         ).last_hidden_state
