@@ -67,13 +67,14 @@ class SLRModel(nn.Module):
         #     bidirectional=True,
         # )
         encoder_configuration = BertConfig(
-            num_hidden_layers=2,
+            num_hidden_layers=1,
             hidden_size=hidden_size,
             num_attention_heads=8,
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
-        self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
+        self.temporal_model1 = BertModel(encoder_configuration, add_pooling_layer=False)
+        self.temporal_model2 = BertModel(encoder_configuration, add_pooling_layer=False)
 
         decoder_configuration = BertConfig(
             num_hidden_layers=1,
@@ -272,8 +273,11 @@ class SLRModel(nn.Module):
         lgt = ret['feat_len']
         attention_mask = ret['attention_mask']
 
-        encoded_hs = self.temporal_model(
+        encoded_hs = self.temporal_model1(
             inputs_embeds=x, attention_mask=attention_mask
+        ).last_hidden_state
+        encoded_hs = self.temporal_model2(
+            inputs_embeds=encoded_hs, attention_mask=attention_mask
         ).last_hidden_state
 
         logits = self.classifier(encoded_hs).permute(1, 0, 2)
