@@ -65,6 +65,7 @@ class SLRModel(nn.Module):
             hidden_size=hidden_size,
             num_layers=2,
             bidirectional=True,
+            dropout=0.6
         )
         # encoder_configuration = BertConfig(
         #     num_hidden_layers=2,
