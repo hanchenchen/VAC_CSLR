@@ -92,6 +92,10 @@ class SLRModel(nn.Module):
             self.h2 = nn.Linear(hidden_size, hidden_size)
             torch.nn.init.normal_(self.reg_mask_token, std=.02)
 
+        if 'SimsiamAlign' in self.loss_weights:
+            self.h1 = nn.Linear(hidden_size, hidden_size)
+            self.h2 = nn.Linear(hidden_size, hidden_size)
+
         if 'DecoderCTC' in self.loss_weights:
             self.ctc_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.ctc_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
@@ -285,6 +289,7 @@ class SLRModel(nn.Module):
             else self.decoder.decode(logits, lgt, batch_first=False, probs=False)
         )
         return {
+            "sequence_feat": encoded_hs["predictions"],
             "sequence_logits": logits,
             "ctc_pred": pred,
         }
@@ -341,6 +346,20 @@ class SLRModel(nn.Module):
                 l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = 1 - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = (l1 + l2) * 0.5
+            elif k == "SimsiamAlign":
+                pred = ret_dict["visual_feat"]
+                target = ret_dict["sequence_feat"].permute(1, 0, 2)
+                mask = ret_dict["attention_mask"]
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
+                l = - F.cosine_similarity(self.h1(pred), target.detach(), dim=2)
+                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5

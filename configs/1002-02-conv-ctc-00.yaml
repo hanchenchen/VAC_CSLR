@@ -21,6 +21,7 @@ loss_weights:
   # VAC
   ConvCTC: 1.0
   Dist: 10.0
+  SimsiamAlign: 1.0
 #load_weights: ''
 
 optimizer_args:
