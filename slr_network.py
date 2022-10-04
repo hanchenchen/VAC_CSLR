@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from transformers import BertConfig, BertModel
+import torch.distributed as dist
 
 import utils
 from modules import BiLSTMLayer, TemporalConv
@@ -65,7 +66,7 @@ class SLRModel(nn.Module):
             hidden_size=hidden_size,
             num_layers=2,
             bidirectional=True,
-            dropout=0.3
+            dropout=0.6
         )
         # encoder_configuration = BertConfig(
         #     num_hidden_layers=2,
@@ -314,6 +315,16 @@ class SLRModel(nn.Module):
                     * self.loss["CTCLoss"](
                         ret_dict["sequence_logits"].log_softmax(-1),
                         label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
+                )
+            elif k == "NegCTC":
+                l =  - (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["sequence_logits"].log_softmax(-1),
+                        torch.randint_like(label, low=1, high=self.num_classes).cpu().int(),
                         ret_dict["feat_len"].cpu().int(),
                         label_lgt.cpu().int(),
                     ).mean()
