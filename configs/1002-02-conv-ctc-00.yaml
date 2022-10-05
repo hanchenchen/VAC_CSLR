@@ -18,7 +18,6 @@ loss_weights:
   # DecoderReg: 100.0
   # DecoderCTC: 1.0
   SeqCTC: 1.0
-  NegCTC: 1.0
   # VAC
   ConvCTC: 1.0
   Dist: 10.0

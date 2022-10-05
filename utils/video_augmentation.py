@@ -102,7 +102,7 @@ class ToTensor(object):
             video = np.array(video)
             video = torch.from_numpy(video.transpose((0, 3, 1, 2))).float()
         if isinstance(video, np.ndarray):
-            video = torch.from_numpy(video.transpose((0, 3, 1, 2)))
+            video = torch.from_numpy(video.transpose((0, 3, 1, 2))).float()
         return video
 
 

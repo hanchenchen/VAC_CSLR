@@ -19,7 +19,7 @@ import torch.utils.data as data
 # import pyarrow as pa
 from PIL import Image
 from torch.utils.data.sampler import Sampler
-
+import torchvision.transforms as T
 from utils import video_augmentation
 
 sys.path.append("..")
@@ -51,6 +51,11 @@ class BaseFeeder(data.Dataset):
         # self.inputs_list = dict([*filter(lambda x: isinstance(x[0], str) or x[0] < 10, self.inputs_list.items())])
         print(mode, len(self))
         self.data_aug = self.transform()
+        self.img_randaug = T.RandAugment()
+        self.img_norm = T.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+            )
         print("")
 
     def __getitem__(self, idx):
@@ -88,11 +93,16 @@ class BaseFeeder(data.Dataset):
                 continue
             if phase in self.dict.keys():
                 label_list.append(self.dict[phase][0])
+        img_list = [Image.open(img_path).convert("RGB") for img_path in img_list]
+        if self.transform_mode == "train":
+            img_list = [self.img_randaug(img) for img in img_list]
+        img_list = [np.asarray(img) for img in img_list]
         return (
-            [
-                cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
-                for img_path in img_list
-            ],
+            # [
+            #     cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+            #     for img_path in img_list
+            # ],
+            img_list,
             label_list,
             fi,
         )
@@ -107,7 +117,8 @@ class BaseFeeder(data.Dataset):
 
     def normalize(self, video, label, file_id=None):
         video, label = self.data_aug(video, label, file_id)
-        video = video.float() / 127.5 - 1
+        # video = video.float() / 127.5 - 1
+        video = self.img_norm(video)
         return video, label
 
     def transform(self):
