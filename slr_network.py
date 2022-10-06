@@ -59,7 +59,7 @@ class SLRModel(nn.Module):
             num_classes=num_classes,
         )
         self.conv1d_2 = TemporalConv(
-            input_size=512,
+            input_size=hidden_size,
             hidden_size=hidden_size,
             conv_type=4,
             use_bn=use_bn,
