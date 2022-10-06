@@ -339,6 +339,7 @@ class SLRModel(nn.Module):
             "layer2_conv_pred": conv_pred_2,
             "layer2_sequence_logits": logits_2,
             "layer2_ctc_pred": pred_2,
+            "layer2_lgt": lgt,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -371,7 +372,7 @@ class SLRModel(nn.Module):
                     * self.loss["CTCLoss"](
                         ret_dict["layer2_conv_logits"].log_softmax(-1),
                         label.cpu().int(),
-                        ret_dict["feat_len"].cpu().int(),
+                        ret_dict["layer2_lgt"].cpu().int(),
                         label_lgt.cpu().int(),
                     ).mean()
                 )
@@ -381,7 +382,7 @@ class SLRModel(nn.Module):
                     * self.loss["CTCLoss"](
                         ret_dict["layer2_sequence_logits"].log_softmax(-1),
                         label.cpu().int(),
-                        ret_dict["feat_len"].cpu().int(),
+                        ret_dict["layer2_lgt"].cpu().int(),
                         label_lgt.cpu().int(),
                     ).mean()
                 )

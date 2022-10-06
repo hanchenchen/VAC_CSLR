@@ -23,6 +23,8 @@ loss_weights:
   Dist: 10.0
   #Add
   SimsiamAlign: 1.0
+  Layer2-ConvCTC: 1.0
+  Layer2-SeqCTC: 1.0
   # TemporaAlign: 1.0
 #load_weights: ''
 
