@@ -40,7 +40,7 @@ class TemporalConv(nn.Module):
                         self.hidden_size,
                         kernel_size=int(ks[1]),
                         stride=1,
-                        padding=(int(ks[1])-1)//2,
+                        padding=0,
                     )
                 )
                 modules.append(nn.BatchNorm1d(self.hidden_size))
@@ -56,8 +56,7 @@ class TemporalConv(nn.Module):
             if ks[0] == "P":
                 feat_len = torch.div(feat_len, 2)
             else:
-                # feat_len -= int(ks[1]) - 1
-                pass
+                feat_len -= int(ks[1]) - 1
         return feat_len
 
     def forward(self, frame_feat, lgt):

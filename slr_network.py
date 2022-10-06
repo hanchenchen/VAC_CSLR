@@ -335,7 +335,9 @@ class SLRModel(nn.Module):
             "sequence_feat": encoded_hs["predictions"],
             "sequence_logits": logits,
             "ctc_pred": pred,
+            "layer2_conv_logits": conv1d_outputs_2["conv_logits"],
             "layer2_conv_pred": conv_pred_2,
+            "layer2_sequence_logits": logits_2,
             "layer2_ctc_pred": pred_2,
         }
 
@@ -358,6 +360,26 @@ class SLRModel(nn.Module):
                     weight
                     * self.loss["CTCLoss"](
                         ret_dict["sequence_logits"].log_softmax(-1),
+                        label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
+                )
+            elif k == "Layer2-ConvCTC":
+                l = (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["layer2_conv_logits"].log_softmax(-1),
+                        label.cpu().int(),
+                        ret_dict["feat_len"].cpu().int(),
+                        label_lgt.cpu().int(),
+                    ).mean()
+                )
+            elif k == "Layer2-SeqCTC":
+                l = (
+                    weight
+                    * self.loss["CTCLoss"](
+                        ret_dict["layer2_sequence_logits"].log_softmax(-1),
                         label.cpu().int(),
                         ret_dict["feat_len"].cpu().int(),
                         label_lgt.cpu().int(),
