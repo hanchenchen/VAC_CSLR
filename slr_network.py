@@ -96,6 +96,10 @@ class SLRModel(nn.Module):
             self.h1 = nn.Linear(hidden_size, hidden_size)
             self.h2 = nn.Linear(hidden_size, hidden_size)
 
+        if 'TemporaAlign' in self.loss_weights:
+            self.l = nn.Linear(512, 512)
+            self.r = nn.Linear(512, 512)
+
         if 'DecoderCTC' in self.loss_weights:
             self.ctc_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.ctc_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
@@ -183,7 +187,7 @@ class SLRModel(nn.Module):
 
         B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
-        for b in range(batch):
+        for b in range(B):
             attention_mask[b][lgt[b]:] = 0
 
         conv_pred = (
@@ -349,6 +353,7 @@ class SLRModel(nn.Module):
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
+                
             elif k == "SimsiamAlign":
                 pred = ret_dict["visual_feat"]
                 target = ret_dict["sequence_feat"].permute(1, 0, 2)
@@ -360,6 +365,27 @@ class SLRModel(nn.Module):
                 l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = (l1 + l2) * 0.5
+
+            elif k == "TemporaAlign":
+                pred = ret_dict["frame_feat"][:, :-1, :]
+                target = ret_dict["frame_feat"][:, 1: , :]
+
+                lgt = ret_dict["frame_num"]
+                B, T, C = pred.shape
+                mask = torch.ones(B, T).to(pred)
+                for b in range(B):
+                    mask[b][lgt[b]-1:] = 0
+
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
+                l = - F.cosine_similarity(self.r(pred), target.detach(), dim=2)
+                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                l = - F.cosine_similarity(pred.detach(), self.l(target), dim=2)
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
