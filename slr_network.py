@@ -58,8 +58,23 @@ class SLRModel(nn.Module):
             use_bn=use_bn,
             num_classes=num_classes,
         )
+        self.conv1d_2 = TemporalConv(
+            input_size=512,
+            hidden_size=hidden_size,
+            conv_type=4,
+            use_bn=use_bn,
+            num_classes=num_classes,
+        )
         self.decoder = utils.Decode(gloss_dict, num_classes, "beam")
         self.temporal_model = BiLSTMLayer(
+            rnn_type="LSTM",
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            bidirectional=True,
+            dropout=0.3
+        )
+        self.temporal_model_2 = BiLSTMLayer(
             rnn_type="LSTM",
             input_size=hidden_size,
             hidden_size=hidden_size,
@@ -110,6 +125,8 @@ class SLRModel(nn.Module):
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
+            self.conv1d_2.fc = NormLinear(hidden_size, self.num_classes)
+            self.classifier_2 = NormLinear(hidden_size, self.num_classes)
         else:
             self.classifier = nn.Linear(hidden_size, self.num_classes)
             self.classifier = nn.Linear(hidden_size, self.num_classes)
@@ -285,6 +302,7 @@ class SLRModel(nn.Module):
         #     inputs_embeds=x, attention_mask=attention_mask
         # ).last_hidden_state.permute(1, 0, 2)
         encoded_hs = self.temporal_model(x.permute(1, 0, 2), lgt)
+        # encoded_hs: T B C
 
         logits = self.classifier(encoded_hs["predictions"])
         pred = (
@@ -292,10 +310,33 @@ class SLRModel(nn.Module):
             if self.training
             else self.decoder.decode(logits, lgt, batch_first=False, probs=False)
         )
+
+        # input: B C T, output: T B C
+        conv1d_outputs_2 = self.conv1d_2(encoded_hs["predictions"].detach().permute(1, 2, 0), lgt)
+        
+        x = conv1d_outputs_2["visual_feat"]
+        lgt = conv1d_outputs_2["feat_len"].int()
+        encoded_hs_2 = self.temporal_model_2(x, lgt)
+        logits_2 = self.classifier_2(encoded_hs_2["predictions"])
+        conv_pred_2 = (   
+            None
+            if self.training
+            else self.decoder.decode(
+                conv1d_outputs_2["conv_logits"], lgt, batch_first=False, probs=False
+            )
+        )
+        pred_2 = (
+            None
+            if self.training
+            else self.decoder.decode(logits_2, lgt, batch_first=False, probs=False)
+        )
+
         return {
             "sequence_feat": encoded_hs["predictions"],
             "sequence_logits": logits,
             "ctc_pred": pred,
+            "layer2_conv_pred": conv_pred_2,
+            "layer2_ctc_pred": pred_2,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -353,7 +394,7 @@ class SLRModel(nn.Module):
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
-                
+
             elif k == "SimsiamAlign":
                 pred = ret_dict["visual_feat"]
                 target = ret_dict["sequence_feat"].permute(1, 0, 2)

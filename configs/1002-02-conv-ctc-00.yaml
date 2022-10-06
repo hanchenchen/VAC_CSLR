@@ -23,7 +23,7 @@ loss_weights:
   Dist: 10.0
   #Add
   SimsiamAlign: 1.0
-  TemporaAlign: 1.0
+  # TemporaAlign: 1.0
 #load_weights: ''
 
 optimizer_args:
