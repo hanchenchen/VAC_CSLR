@@ -106,9 +106,8 @@ def seq_eval(
     cfg, loader, model, mode, epoch, work_dir, recoder, evaluate_tool="python"
 ):
     model.eval()
-    total_sent = []
     total_info = []
-    total_conv_sent = []
+    total_pred = defaultdict(list)
     loss_kv_dict = defaultdict(list)
     stat = {i: [0, 0] for i in range(len(loader.dataset.dict))}
     for batch_idx, data in enumerate(tqdm(loader)):
@@ -122,86 +121,68 @@ def seq_eval(
         for k, v in reduce_loss_dict(loss_kv, phase='Val').items():
             loss_kv_dict[k].append(v)
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
-        total_sent += ret_dict["ctc_pred"]
-        total_conv_sent += ret_dict["conv_pred"]
+        for  k, v in ret_dict.items():
+            if '_pred' in k:
+                total_pred[k] += v
     for k, v in loss_kv_dict.items():
         loss_kv_dict[k] = sum(v)/len(v)
+    gather_total_pred = {k:[None for _ in range(dist.get_world_size())] for  k, v in total_pred.items()}
     gather_total_info = [None for _ in range(dist.get_world_size())]
-    gather_total_sent = [None for _ in range(dist.get_world_size())]
-    gather_total_conv_sent = [None for _ in range(dist.get_world_size())]
     dist.barrier()
     dist.all_gather_object(
         gather_total_info,
         total_info,
     )
-    dist.all_gather_object(
-        gather_total_sent,
-        total_sent,
-    )
-    dist.all_gather_object(
-        gather_total_conv_sent,
-        total_conv_sent,
-    )
-    total_sent = []
+    for  k, v in total_pred.items():
+        dist.all_gather_object(
+            gather_total_pred[k],
+            total_pred[k],
+        )
+        temp = gather_total_pred[k]
+        gather_total_pred[k] = []
+        for i in temp:
+            gather_total_pred[k] += i
+
     total_info = []
-    total_conv_sent = []
     for i in gather_total_info:
         total_info += i
-    for i in gather_total_sent:
-        total_sent += i
-    for i in gather_total_conv_sent:
-        total_conv_sent += i
     lstm_ret = 100.0
-    conv_ret = 100.0
     if dist.get_rank() == 0:
         try:
             python_eval = True if evaluate_tool == "python" else False
-            write2file(
-                work_dir + "output-hypothesis-{}.ctm".format(mode),
-                total_info,
-                total_sent,
-            )
-            write2file(
-                work_dir + "output-hypothesis-{}-conv.ctm".format(mode),
-                total_info,
-                total_conv_sent,
-            )
-            conv_ret = evaluate(
-                prefix=work_dir,
-                mode=mode,
-                output_file="output-hypothesis-{}-conv.ctm".format(mode),
-                evaluate_dir=cfg.dataset_info["evaluation_dir"],
-                evaluate_prefix=cfg.dataset_info["evaluation_prefix"],
-                output_dir="epoch_{}_result/".format(epoch),
-                python_evaluate=python_eval,
-            )
-            lstm_ret = evaluate(
-                prefix=work_dir,
-                mode=mode,
-                output_file="output-hypothesis-{}.ctm".format(mode),
-                evaluate_dir=cfg.dataset_info["evaluation_dir"],
-                evaluate_prefix=cfg.dataset_info["evaluation_prefix"],
-                output_dir="epoch_{}_result/".format(epoch),
-                python_evaluate=python_eval,
-                triplet=True,
-            )
+            ret = {}
+            for  k, v in gather_total_pred.items():
+                write2file(
+                    work_dir + f"output-hypothesis-{mode}-{k}.ctm",
+                    total_info,
+                    v,
+                )
+                ret[f"WER/{mode} {k}"] = evaluate(
+                    prefix=work_dir,
+                    mode=mode,
+                    output_file=f"output-hypothesis-{mode}-{k}.ctm",
+                    evaluate_dir=cfg.dataset_info["evaluation_dir"],
+                    evaluate_prefix=cfg.dataset_info["evaluation_prefix"],
+                    output_dir="epoch_{}_result/".format(epoch),
+                    python_evaluate=python_eval,
+                )
         except:
             print("Unexpected error:", sys.exc_info()[0])
-            lstm_ret = 100.0
-            conv_ret = 100.0
         finally:
             pass
-    recoder.print_log(
-        f"Epoch {epoch}, {mode} WER {lstm_ret: 2.2f}%  {mode} Conv WER {conv_ret: 2.2f}% ", f"{work_dir}/{mode}.txt"
-    )
-    recoder.print_wandb(
-        {
-            "epoch": epoch,
-            f"{mode} Conv WER": conv_ret,
-            f"{mode} WER": lstm_ret,
-            **loss_kv_dict
-        }
-    )
+        recoder.print_log(
+            f"Epoch {epoch}, {mode} WER {ret[f'WER/{mode} ctc_pred']: 2.2f}%  {mode} Conv WER {ret[f'WER/{mode} conv_pred']: 2.2f}% ", f"{work_dir}/{mode}.txt"
+        )
+        recoder.print_wandb(
+            {
+                "epoch": epoch,
+                f"{mode} Conv WER": ret[f'WER/{mode} conv_pred'],
+                f"{mode} WER": ret[f'WER/{mode} ctc_pred'],
+                **loss_kv_dict,
+                **ret,
+            }
+        )
+        lstm_ret = ret[f'WER/{mode} ctc_pred']
     return lstm_ret
 
 
