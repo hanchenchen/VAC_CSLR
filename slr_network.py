@@ -312,7 +312,7 @@ class SLRModel(nn.Module):
         )
 
         # input: B C T, output: T B C
-        conv1d_outputs_2 = self.conv1d_2(encoded_hs["predictions"].detach().permute(1, 2, 0), lgt)
+        conv1d_outputs_2 = self.conv1d_2(encoded_hs["predictions"].permute(1, 2, 0), lgt)
         
         x = conv1d_outputs_2["visual_feat"]
         lgt = conv1d_outputs_2["feat_len"].int()
