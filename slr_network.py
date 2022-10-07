@@ -36,7 +36,7 @@ class SLRModel(nn.Module):
         c2d_type,
         conv_type,
         use_bn=False,
-        hidden_size=1024,
+        hidden_size=2048,
         gloss_dict=None,
         loss_weights=None,
         weight_norm=True,
@@ -52,7 +52,7 @@ class SLRModel(nn.Module):
         self.conv2d = getattr(models, c2d_type)(pretrained=True)
         self.conv2d.fc = nn.Identity()
         self.conv1d = TemporalConv(
-            input_size=512,
+            input_size=2048,
             hidden_size=hidden_size,
             conv_type=conv_type,
             use_bn=use_bn,
