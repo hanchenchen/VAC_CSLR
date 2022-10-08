@@ -67,6 +67,7 @@ class SLRModel(nn.Module):
             bidirectional=True,
             dropout=0.3
         )
+
         # encoder_configuration = BertConfig(
         #     num_hidden_layers=2,
         #     hidden_size=hidden_size,
@@ -83,6 +84,24 @@ class SLRModel(nn.Module):
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
+        if 'AutoReg' in self.loss_weights:
+            self.l2r = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=False,
+                dropout=0.3
+            )
+            # self.r2l = BiLSTMLayer(
+            #     rnn_type="LSTM",
+            #     input_size=hidden_size,
+            #     hidden_size=hidden_size,
+            #     num_layers=2,
+            #     bidirectional=False,
+            #     dropout=0.3
+            # )
+            
         if 'DecoderReg' in self.loss_weights:
             self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.reg_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
@@ -363,6 +382,24 @@ class SLRModel(nn.Module):
                 l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
+            elif k == "AutoReg":
+                pred = ret_dict["frame_feat"].permute(1, 0, 2)[:-1, :, :]
+                target = ret_dict["frame_feat"].permute(1, 0, 2)[1:, :, :]
+                lgt = (ret_dict["frame_num"] - 1).int()
+                T, B, C = pred.shape
+                mask = torch.ones(T, B).to(pred)
+                for b in range(B):
+                    mask[lgt[b]:, b] = 0
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
+                l = - F.cosine_similarity(self.l2r(pred, lgt.cpu())['predictions'], target.detach(), dim=2)
+                l = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                # l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                # l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                # l = (l1 + l2) * 0.5
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):

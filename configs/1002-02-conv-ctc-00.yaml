@@ -22,6 +22,7 @@ loss_weights:
   ConvCTC: 1.0
   Dist: 10.0
   SimsiamAlign: 1.0
+  AutoReg: 1.0
 #load_weights: ''
 
 optimizer_args:
@@ -43,7 +44,7 @@ model: slr_network.SLRModel
 decode_mode: beam
 model_args:
   num_classes: 1296
-  c2d_type: resnet101
+  c2d_type: resnet50
   conv_type: 3
   use_bn: 1
   # SMKD
