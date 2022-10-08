@@ -23,6 +23,7 @@ loss_weights:
   Dist: 10.0
   SimsiamAlign: 1.0
   AutoReg: 1.0
+  AutoReg-bf: 1.0
 #load_weights: ''
 
 optimizer_args:

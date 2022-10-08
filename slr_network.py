@@ -93,14 +93,14 @@ class SLRModel(nn.Module):
                 bidirectional=False,
                 dropout=0.3
             )
-            # self.r2l = BiLSTMLayer(
-            #     rnn_type="LSTM",
-            #     input_size=hidden_size,
-            #     hidden_size=hidden_size,
-            #     num_layers=2,
-            #     bidirectional=False,
-            #     dropout=0.3
-            # )
+            self.r2l = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=False,
+                dropout=0.3
+            )
             
         if 'DecoderReg' in self.loss_weights:
             self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
@@ -394,6 +394,27 @@ class SLRModel(nn.Module):
                 # var = target.var(dim=-1, keepdim=True)
                 # target = (target - mean) / (var + 1.e-6)**.5
                 l = - F.cosine_similarity(self.l2r(pred, lgt.cpu())['predictions'], target.detach(), dim=2)
+                l = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                # l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                # l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+
+                # l = (l1 + l2) * 0.5
+            elif k == "AutoReg-bf":
+                pred = ret_dict["frame_feat"].permute(1, 0, 2)[1:, :, :]
+                target = ret_dict["frame_feat"].permute(1, 0, 2)[:-1, :, :]
+                pred = torch.flip(pred, [0])
+                target = torch.flip(target, [0])
+                lgt = (ret_dict["frame_num"] - 1).int()
+                T, B, C = pred.shape
+                mask = torch.ones(T, B).to(pred)
+                for b in range(B):
+                    mask[lgt[b]:, b] = 0
+                mask = torch.flip(mask, [0])
+                # mean = target.mean(dim=-1, keepdim=True)
+                # var = target.var(dim=-1, keepdim=True)
+                # target = (target - mean) / (var + 1.e-6)**.5
+                l = - F.cosine_similarity(self.r2l(pred, lgt.cpu())['predictions'], target.detach(), dim=2)
                 l = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
 
                 # l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
