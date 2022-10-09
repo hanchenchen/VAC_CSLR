@@ -19,7 +19,7 @@ loss_weights:
   # DecoderCTC: 1.0
   SeqCTC: 1.0
   # VAC
-  ConvCTC: 1.0
+  # ConvCTC: 1.0
   # Dist: 10.0
   # SimsiamAlign: 1.0
 #load_weights: ''
