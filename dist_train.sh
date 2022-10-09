@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=4,5 nohup python -m torch.distributed.launch \
 --config configs/1002-02-conv-ctc-00.yaml  \
 --device 0,1 \
 --batch-size 1 \
---work-dir work-dir/dist-gpu=2xbs=1-train/1009-22-wo-distill-21/ & \
+--work-dir work-dir/dist-gpu=2xbs=1-train/1009-23-share_classifier=False-22/ & \
 # --load-weights checkpoints/resnet18_vac_smkd_dev_19.80_epoch35_model.pt \
 # --phase test \
 # --work-dir work-dir/test/22-backward_hook-21-dist-bs=2-gpu=1-02/
