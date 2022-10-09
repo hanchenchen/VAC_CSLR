@@ -20,7 +20,7 @@ loss_weights:
   SeqCTC: 1.0
   # VAC
   ConvCTC: 1.0
-  Dist: 10.0
+  # Dist: 10.0
   # SimsiamAlign: 1.0
 #load_weights: ''
 
