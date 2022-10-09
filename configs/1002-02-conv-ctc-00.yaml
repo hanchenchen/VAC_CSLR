@@ -48,4 +48,4 @@ model_args:
   use_bn: 1
   # SMKD
   share_classifier: False
-  weight_norm: True
+  weight_norm: False
