@@ -9,6 +9,7 @@ import cv2
 import pandas
 import six
 import torch
+import random
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -36,6 +37,8 @@ class BaseFeeder(data.Dataset):
         mode="train",
         transform_mode=True,
         datatype="lmdb",
+        proposal_num=1,
+        max_label_len=30,
     ):
         self.mode = mode
         self.ng = num_gloss
@@ -57,17 +60,43 @@ class BaseFeeder(data.Dataset):
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225],
         )
+        self.max_label_len = max(
+            [
+                len(inp["label"].split(" "))
+                for k, inp in self.inputs_list.items()
+                if type(k) == int
+            ]
+        )  # 28
+        self.mean_label_len = [
+            len(inp["label"].split(" "))
+            for k, inp in self.inputs_list.items()
+            if type(k) == int
+        ]  # 28
+        self.mean_label_len = sum(self.mean_label_len) / len(self.mean_label_len)  # 28
+        # print("!!!", self.max_label_len, self.mean_label_len)
+        # train 5671
+        # Apply testing transform.
+        # !!! 28 11.499030153412097
+        # dev 540
+        # Apply testing transform.
+        # !!! 23 10.383333333333333
+        # test 629
+        # Apply testing transform.
+        # !!! 21 10.50556438791733
+        self.proposal_num = proposal_num
+        self.max_label_len = max_label_len
         print("")
 
     def __getitem__(self, idx):
         if self.data_type == "video":
-            input_data, label, fi = self.read_video(idx)
+            input_data, label, fi, label_proposals = self.read_video(idx)
             input_data, label = self.normalize(input_data, label)
             # input_data, label = self.normalize(input_data, label, fi['fileid'])
             return (
                 input_data,
                 torch.LongTensor(label),
                 self.inputs_list[idx]["original_info"],
+                label_proposals,
             )
         elif self.data_type == "lmdb":
             input_data, label, fi = self.read_lmdb(idx)
@@ -98,6 +127,9 @@ class BaseFeeder(data.Dataset):
         # if self.transform_mode == "train":
         #     img_list = [self.img_randaug(img) for img in img_list]
         img_list = [np.asarray(img) for img in img_list]
+        label_proposals = [self.del_ins_sub(label_list, op_ratio=0)] + [
+            self.del_ins_sub(label_list) for _ in range(self.proposal_num)
+        ]
         return (
             # [
             #     cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
@@ -106,7 +138,31 @@ class BaseFeeder(data.Dataset):
             img_list,
             label_list,
             fi,
+            label_proposals,
         )
+
+    def del_ins_sub(self, label_list, op_ratio=0.2):
+        label_list = label_list.copy()  # Warning: shallow copy
+        op_num = int(len(label_list) * op_ratio)
+        for op in torch.rand(op_num):
+            op = int(op * 3)
+            if op == 0:  # del
+                del_idx = random.choice([i for i in range(len(label_list))])
+                label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
+            elif op == 1:  # ins
+                ins_idx = random.choice([i for i in range(len(label_list) + 1)])
+                ins_label = random.choice([i for i in range(len(self.dict))]) + 1
+                label_list = label_list[:ins_idx] + [ins_label] + label_list[ins_idx:]
+            elif op == 2:  # sub
+                sub_idx = random.choice([i for i in range(len(label_list))])
+                sub_label = random.choice([i for i in range(len(self.dict))]) + 1
+                label_list[sub_idx] = sub_label
+        label_list = (
+            [len(self.dict) + 1]
+            + label_list
+            + [0 for i in range(self.max_label_len - len(label_list) - 1)]
+        )
+        return label_list
 
     def read_features(self, index):
         # load file info
@@ -158,7 +214,7 @@ class BaseFeeder(data.Dataset):
     @staticmethod
     def collate_fn(batch):
         batch = [item for item in sorted(batch, key=lambda x: len(x[0]), reverse=True)]
-        video, label, info = list(zip(*batch))
+        video, label, info, label_proposals = list(zip(*batch))
         if len(video[0].shape) > 3:
             max_len = len(video[0])
             video_length = torch.LongTensor(
@@ -201,7 +257,19 @@ class BaseFeeder(data.Dataset):
             for lab in label:
                 padded_label.extend(lab)
             padded_label = torch.LongTensor(padded_label)
-            return padded_video, video_length, padded_label, label_length, info
+            label_proposals = torch.LongTensor(label_proposals)
+            label_proposals_mask = torch.zeros(label_proposals.shape).masked_fill_(
+                torch.eq(label_proposals, 0), -float("inf")
+            )
+            return (
+                padded_video,
+                video_length,
+                padded_label,
+                label_length,
+                label_proposals,
+                label_proposals_mask,
+                info,
+            )
 
     def __len__(self):
         return len(self.inputs_list) - 1

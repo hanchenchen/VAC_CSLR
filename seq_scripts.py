@@ -51,11 +51,15 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         vid_lgt = data[1]
         label = data[2]
         label_lgt = data[3]
+        label_proposals = data[4]
+        label_proposals_mask = data[5]
         loss, loss_kv = model(
             vid,
             vid_lgt,
             label=label,
             label_lgt=label_lgt,
+            label_proposals=label_proposals,
+            label_proposals_mask=label_proposals_mask,
             return_loss=True,
             phase="Train",
         )
@@ -124,9 +128,17 @@ def seq_eval(
         vid_lgt = data[1]
         label = data[2]
         label_lgt = data[3]
+        label_proposals = data[4]
+        label_proposals_mask = data[5]
         with torch.no_grad():
             ret_dict, (loss, loss_kv) = model(
-                vid, vid_lgt, label=label, label_lgt=label_lgt, phase="Val"
+                vid,
+                vid_lgt,
+                label=label,
+                label_lgt=label_lgt,
+                label_proposals=label_proposals,
+                label_proposals_mask=label_proposals_mask,
+                phase="Val",
             )
         for k, v in reduce_loss_dict(loss_kv, phase="Val").items():
             loss_kv_dict[k].append(v)

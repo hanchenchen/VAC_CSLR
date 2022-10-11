@@ -54,6 +54,45 @@ class Decode(object):
             )
         return ret_list
 
+    def BeamSearch_N(
+        self, nn_output, vid_lgt, probs=False, N_beams=1, max_label_len=30
+    ):
+        """
+        CTCBeamDecoder Shape:
+                - Input:  nn_output (B, T, N), which should be passed through a softmax layer
+                - Output: beam_resuls (B, N_beams, T), int, need to be decoded by i2g_dict
+                          beam_scores (B, N_beams), p=1/np.exp(beam_score)
+                          timesteps (B, N_beams)
+                          out_lens (B, N_beams)
+        """
+        nn_output = nn_output.permute(1, 0, 2)
+        if not probs:
+            nn_output = nn_output.softmax(-1).cpu()
+        vid_lgt = vid_lgt.cpu()
+        beam_result, beam_scores, timesteps, out_seq_len = self.ctc_decoder.decode(
+            nn_output, vid_lgt
+        )
+        ret_list = []
+        for batch_idx in range(len(nn_output)):
+            ret_list.append([])
+            for beam_idx in range(N_beams):
+                first_result = beam_result[batch_idx][beam_idx][
+                    : out_seq_len[batch_idx][0]
+                ]
+                if len(first_result) != 0:
+                    first_result = torch.stack([x[0] for x in groupby(first_result)])
+                res = (
+                    [len(self.i2g_dict) + 1]
+                    + [int(gloss_id) for idx, gloss_id in enumerate(first_result)]
+                    + [0 for i in range(max_label_len - len(first_result) - 1)]
+                )
+                ret_list[batch_idx].append(res[:30])
+        label_proposals = torch.LongTensor(ret_list)
+        label_proposals_mask = torch.zeros(label_proposals.shape).masked_fill_(
+            torch.eq(label_proposals, 0), -float("inf")
+        )
+        return label_proposals, label_proposals_mask
+
     def MaxDecode(self, nn_output, vid_lgt):
         index_list = torch.argmax(nn_output, axis=2)
         batchsize, lgt = index_list.shape
@@ -72,6 +111,20 @@ class Decode(object):
                 [
                     (self.i2g_dict[int(gloss_id)], idx)
                     for idx, gloss_id in enumerate(max_result)
+                ]
+            )
+        return ret_list
+
+    def MaxDecodeCA(self, nn_output, mask):
+        index_list = torch.argmax(nn_output, axis=2)
+        batchsize, lgt = index_list.shape
+        ret_list = []
+        for batch_idx in range(batchsize):
+            filtered = index_list[batch_idx][: torch.sum((mask[batch_idx] == 0).int())]
+            ret_list.append(
+                [
+                    (self.i2g_dict[int(gloss_id)], idx)
+                    for idx, gloss_id in enumerate(index_list[batch_idx])
                 ]
             )
         return ret_list

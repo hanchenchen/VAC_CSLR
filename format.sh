@@ -1,6 +1,6 @@
 # remove unused imports
-pycln .
+pycln . --exclude docker/
 # sort import
 isort -rc .
 # format code
-black .
+black . --exclude docker/
