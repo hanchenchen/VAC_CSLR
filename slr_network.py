@@ -65,7 +65,19 @@ class SLRModel(nn.Module):
             hidden_size=hidden_size,
             num_layers=2,
             bidirectional=True,
-            dropout=0.3
+            dropout=0.3,
+        )
+        self.len_model = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+        self.len_predictor = nn.Sequential(
+            nn.Linear(hidden_size*4, 1),
+            nn.Sigmoid(),
         )
         # encoder_configuration = BertConfig(
         #     num_hidden_layers=2,
@@ -83,25 +95,25 @@ class SLRModel(nn.Module):
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
-        if 'DecoderReg' in self.loss_weights:
+        if "DecoderReg" in self.loss_weights:
             self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.reg_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
             self.reg_decoder = BertModel(decoder_configuration)
             self.reg_pred = nn.Linear(hidden_size, hidden_size)
             self.h1 = nn.Linear(hidden_size, hidden_size)
             self.h2 = nn.Linear(hidden_size, hidden_size)
-            torch.nn.init.normal_(self.reg_mask_token, std=.02)
+            torch.nn.init.normal_(self.reg_mask_token, std=0.02)
 
-        if 'SimsiamAlign' in self.loss_weights:
+        if "SimsiamAlign" in self.loss_weights:
             self.h1 = nn.Linear(hidden_size, hidden_size)
             self.h2 = nn.Linear(hidden_size, hidden_size)
 
-        if 'DecoderCTC' in self.loss_weights:
+        if "DecoderCTC" in self.loss_weights:
             self.ctc_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.ctc_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
             self.ctc_decoder = BertModel(decoder_configuration)
             self.ctc_pred = nn.Linear(hidden_size, self.num_classes)
-            torch.nn.init.normal_(self.ctc_mask_token, std=.02)
+            torch.nn.init.normal_(self.ctc_mask_token, std=0.02)
 
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
@@ -150,11 +162,15 @@ class SLRModel(nn.Module):
         """
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))
-        
-        noise = torch.rand(N, L, device=x.device) + (1-attention_mask)  # noise in [0, 1]
-        
+
+        noise = torch.rand(N, L, device=x.device) + (
+            1 - attention_mask
+        )  # noise in [0, 1]
+
         # sort noise for each sample
-        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+        ids_shuffle = torch.argsort(
+            noise, dim=1
+        )  # ascend: small is keep, large is remove
         ids_restore = torch.argsort(ids_shuffle, dim=1)
 
         # keep the first subset
@@ -184,7 +200,7 @@ class SLRModel(nn.Module):
         B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
         for b in range(batch):
-            attention_mask[b][lgt[b]:] = 0
+            attention_mask[b][lgt[b] :] = 0
 
         conv_pred = (
             None
@@ -193,7 +209,7 @@ class SLRModel(nn.Module):
                 conv1d_outputs["conv_logits"], lgt, batch_first=False, probs=False
             )
         )
-        
+
         return {
             "frame_feat": frame_feat,
             "frame_num": len_x,
@@ -206,13 +222,21 @@ class SLRModel(nn.Module):
 
     def forward_masked_encoder(self, ret):
 
-        x = ret['visual_feat']
-        lgt = ret['feat_len']
-        attention_mask = ret['attention_mask']
+        x = ret["visual_feat"]
+        lgt = ret["feat_len"]
+        attention_mask = ret["attention_mask"]
 
-        x_masked, mask, ids_restore, masked_attention_mask, ids_keep = self.random_masking(x, mask_ratio=0.9, attention_mask=attention_mask)
+        (
+            x_masked,
+            mask,
+            ids_restore,
+            masked_attention_mask,
+            ids_keep,
+        ) = self.random_masking(x, mask_ratio=0.9, attention_mask=attention_mask)
         masked_hs = self.temporal_model(
-            inputs_embeds=x_masked, attention_mask=masked_attention_mask, position_ids=ids_keep
+            inputs_embeds=x_masked,
+            attention_mask=masked_attention_mask,
+            position_ids=ids_keep,
         ).last_hidden_state
 
         return {
@@ -222,15 +246,21 @@ class SLRModel(nn.Module):
         }
 
     def forward_ctc_decoder(self, ret):
-        x = ret['masked_hs']
-        attention_mask = ret['attention_mask']
-        ids_restore = ret['ids_restore']
+        x = ret["masked_hs"]
+        attention_mask = ret["attention_mask"]
+        ids_restore = ret["ids_restore"]
 
         ctc_emb = self.ctc_embed(x)
         # append mask tokens to sequence
-        mask_tokens = self.ctc_mask_token.repeat(ctc_emb.shape[0], ids_restore.shape[1] - ctc_emb.shape[1], 1)
+        mask_tokens = self.ctc_mask_token.repeat(
+            ctc_emb.shape[0], ids_restore.shape[1] - ctc_emb.shape[1], 1
+        )
         ctc_emb = torch.cat([ctc_emb, mask_tokens], dim=1)  # no cls token
-        ctc_emb = torch.gather(ctc_emb, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, ctc_emb.shape[2]))  # unshuffle
+        ctc_emb = torch.gather(
+            ctc_emb,
+            dim=1,
+            index=ids_restore.unsqueeze(-1).repeat(1, 1, ctc_emb.shape[2]),
+        )  # unshuffle
 
         ctc_hs = self.ctc_decoder(
             inputs_embeds=ctc_emb, attention_mask=attention_mask
@@ -241,9 +271,7 @@ class SLRModel(nn.Module):
         decoder_ctc_pred = (
             None
             if self.training
-            else self.decoder.decode(
-                ctc_logits, lgt, batch_first=False, probs=False
-            )
+            else self.decoder.decode(ctc_logits, lgt, batch_first=False, probs=False)
         )
 
         return {
@@ -252,15 +280,21 @@ class SLRModel(nn.Module):
         }
 
     def forward_reg_decoder(self, ret):
-        x = ret['masked_hs']
-        attention_mask = ret['attention_mask']
-        ids_restore = ret['ids_restore']
+        x = ret["masked_hs"]
+        attention_mask = ret["attention_mask"]
+        ids_restore = ret["ids_restore"]
 
         reg_emb = self.reg_embed(x)
         # append mask tokens to sequence
-        mask_tokens = self.reg_mask_token.repeat(reg_emb.shape[0], ids_restore.shape[1] - reg_emb.shape[1], 1)
+        mask_tokens = self.reg_mask_token.repeat(
+            reg_emb.shape[0], ids_restore.shape[1] - reg_emb.shape[1], 1
+        )
         reg_emb = torch.cat([reg_emb, mask_tokens], dim=1)  # no cls token
-        reg_emb = torch.gather(reg_emb, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, reg_emb.shape[2]))  # unshuffle
+        reg_emb = torch.gather(
+            reg_emb,
+            dim=1,
+            index=ids_restore.unsqueeze(-1).repeat(1, 1, reg_emb.shape[2]),
+        )  # unshuffle
 
         reg_hs = self.reg_decoder(
             inputs_embeds=reg_emb, attention_mask=attention_mask
@@ -273,9 +307,9 @@ class SLRModel(nn.Module):
         }
 
     def forward_encoder(self, ret):
-        x = ret['visual_feat']
-        lgt = ret['feat_len']
-        attention_mask = ret['attention_mask']
+        x = ret["visual_feat"]
+        lgt = ret["feat_len"]
+        attention_mask = ret["attention_mask"]
 
         # encoded_hs = self.temporal_model(
         #     inputs_embeds=x, attention_mask=attention_mask
@@ -288,10 +322,16 @@ class SLRModel(nn.Module):
             if self.training
             else self.decoder.decode(logits, lgt, batch_first=False, probs=False)
         )
+        
+        encoded_len_hs = self.len_model(x.permute(1, 0, 2), lgt)
+        L, B, C = encoded_len_hs["hidden"].shape
+        len_logits = self.len_predictor(encoded_len_hs["hidden"].permute(1, 0, 2).reshape(B, -1))
+        
         return {
             "sequence_feat": encoded_hs["predictions"],
             "sequence_logits": logits,
             "ctc_pred": pred,
+            "len_logits": len_logits,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -343,10 +383,14 @@ class SLRModel(nn.Module):
                 # target = (target - mean) / (var + 1.e-6)**.5
 
                 l = 1 - F.cosine_similarity(self.h1(pred), target.detach(), dim=2)
-                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+                l1 = (
+                    weight * (l * mask).sum() / mask.sum()
+                )  # mean loss on removed patches
 
                 l = 1 - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
-                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+                l2 = (
+                    weight * (l * mask).sum() / mask.sum()
+                )  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
             elif k == "SimsiamAlign":
@@ -356,13 +400,22 @@ class SLRModel(nn.Module):
                 # mean = target.mean(dim=-1, keepdim=True)
                 # var = target.var(dim=-1, keepdim=True)
                 # target = (target - mean) / (var + 1.e-6)**.5
-                l = - F.cosine_similarity(self.h1(pred), target.detach(), dim=2)
-                l1 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+                l = -F.cosine_similarity(self.h1(pred), target.detach(), dim=2)
+                l1 = (
+                    weight * (l * mask).sum() / mask.sum()
+                )  # mean loss on removed patches
 
-                l = - F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
-                l2 = weight * (l * mask).sum() / mask.sum()  # mean loss on removed patches
+                l = -F.cosine_similarity(pred.detach(), self.h2(target), dim=2)
+                l2 = (
+                    weight * (l * mask).sum() / mask.sum()
+                )  # mean loss on removed patches
 
                 l = (l1 + l2) * 0.5
+            elif k == "LenPred":
+                pred = ret_dict["len_logits"].reshape(-1)
+                target = label_lgt.to(pred)/50.0
+                l = self.loss["MSE"](pred, target)
+                loss_kv[f"{phase}/Acc/{k}"] = torch.abs(pred-target).mean()
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
@@ -374,20 +427,22 @@ class SLRModel(nn.Module):
     def criterion_init(self):
         self.loss["CTCLoss"] = torch.nn.CTCLoss(reduction="none", zero_infinity=False)
         self.loss["distillation"] = SeqKD(T=8)
-        # self.loss["MSE"] = nn.MSELoss()
+        self.loss["MSE"] = nn.MSELoss()
         return self.loss
 
-    def forward(self, x, len_x, label=None, label_lgt=None, return_loss=False, phase='val'):
+    def forward(
+        self, x, len_x, label=None, label_lgt=None, return_loss=False, phase="val"
+    ):
         x = x.to(self.device, non_blocking=True)
         # label = label.to(self.device, non_blocking=True)
         res = self.forward_conv_layer(x, len_x)
-        if 'DecoderReg' in self.loss_weights or 'DecoderCTC' in self.loss_weights:
+        if "DecoderReg" in self.loss_weights or "DecoderCTC" in self.loss_weights:
             res.update(self.forward_masked_encoder(res))
-        if 'SeqCTC' in self.loss_weights or 'Dist' in self.loss_weights:
+        if "SeqCTC" in self.loss_weights or "Dist" in self.loss_weights:
             res.update(self.forward_encoder(res))
-        if 'DecoderReg' in self.loss_weights:
+        if "DecoderReg" in self.loss_weights:
             res.update(self.forward_reg_decoder(res))
-        if 'DecoderCTC' in self.loss_weights:
+        if "DecoderCTC" in self.loss_weights:
             res.update(self.forward_ctc_decoder(res))
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)

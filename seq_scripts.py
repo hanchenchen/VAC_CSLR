@@ -13,7 +13,7 @@ from evaluation.slr_eval.wer_calculation import evaluate
 from utils.dist import master_only
 
 
-def reduce_loss_dict(loss_dict, phase='Train'):
+def reduce_loss_dict(loss_dict, phase="Train"):
     """reduce loss dict.
 
     In distributed training, it averages the losses among different GPUs .
@@ -52,7 +52,12 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         label = data[2]
         label_lgt = data[3]
         loss, loss_kv = model(
-            vid, vid_lgt, label=label, label_lgt=label_lgt, return_loss=True, phase='Train'
+            vid,
+            vid_lgt,
+            label=label,
+            label_lgt=label_lgt,
+            return_loss=True,
+            phase="Train",
         )
         if np.isinf(loss.item()) or np.isnan(loss.item()):
             print(data[-1])
@@ -64,7 +69,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
         # del vid, vid_lgt, label, label_lgt
         # torch.cuda.empty_cache()
         if batch_idx % recoder.log_interval == 0:
-            loss_kv = reduce_loss_dict(loss_kv, phase='Train')
+            loss_kv = reduce_loss_dict(loss_kv, phase="Train")
             recoder.print_log(
                 "\tEpoch: {}, Batch({}/{}) done. Loss: {:.8f}  lr:{:f}".format(
                     epoch_idx,
@@ -100,7 +105,10 @@ def data_to_device(data):
     else:
         raise ValueError(data.shape, "Unknown Dtype: {}".format(data.dtype))
 
+
 from collections import defaultdict
+
+
 @torch.no_grad()
 def seq_eval(
     cfg, loader, model, mode, epoch, work_dir, recoder, evaluate_tool="python"
@@ -117,23 +125,27 @@ def seq_eval(
         label = data[2]
         label_lgt = data[3]
         with torch.no_grad():
-            ret_dict, (loss, loss_kv) = model(vid, vid_lgt, label=label, label_lgt=label_lgt, phase='Val')
-        for k, v in reduce_loss_dict(loss_kv, phase='Val').items():
+            ret_dict, (loss, loss_kv) = model(
+                vid, vid_lgt, label=label, label_lgt=label_lgt, phase="Val"
+            )
+        for k, v in reduce_loss_dict(loss_kv, phase="Val").items():
             loss_kv_dict[k].append(v)
         total_info += [file_name.split("|")[0] for file_name in data[-1]]
-        for  k, v in ret_dict.items():
-            if '_pred' in k:
+        for k, v in ret_dict.items():
+            if "_pred" in k:
                 total_pred[k] += v
     for k, v in loss_kv_dict.items():
-        loss_kv_dict[k] = sum(v)/len(v)
-    gather_total_pred = {k:[None for _ in range(dist.get_world_size())] for  k, v in total_pred.items()}
+        loss_kv_dict[k] = sum(v) / len(v)
+    gather_total_pred = {
+        k: [None for _ in range(dist.get_world_size())] for k, v in total_pred.items()
+    }
     gather_total_info = [None for _ in range(dist.get_world_size())]
     dist.barrier()
     dist.all_gather_object(
         gather_total_info,
         total_info,
     )
-    for  k, v in total_pred.items():
+    for k, v in total_pred.items():
         dist.all_gather_object(
             gather_total_pred[k],
             total_pred[k],
@@ -151,7 +163,7 @@ def seq_eval(
         try:
             python_eval = True if evaluate_tool == "python" else False
             ret = {}
-            for  k, v in gather_total_pred.items():
+            for k, v in gather_total_pred.items():
                 write2file(
                     work_dir + f"output-hypothesis-{mode}-{k}.ctm",
                     total_info,
@@ -171,18 +183,19 @@ def seq_eval(
         finally:
             pass
         recoder.print_log(
-            f"Epoch {epoch}, {mode} WER {ret[f'WER/{mode} ctc_pred']: 2.2f}%  {mode} Conv WER {ret[f'WER/{mode} conv_pred']: 2.2f}% ", f"{work_dir}/{mode}.txt"
+            f"Epoch {epoch}, {mode} WER {ret[f'WER/{mode} ctc_pred']: 2.2f}%  {mode} Conv WER {ret[f'WER/{mode} conv_pred']: 2.2f}% ",
+            f"{work_dir}/{mode}.txt",
         )
         recoder.print_wandb(
             {
                 "epoch": epoch,
-                f"{mode} Conv WER": ret[f'WER/{mode} conv_pred'],
-                f"{mode} WER": ret[f'WER/{mode} ctc_pred'],
+                f"{mode} Conv WER": ret[f"WER/{mode} conv_pred"],
+                f"{mode} WER": ret[f"WER/{mode} ctc_pred"],
                 **loss_kv_dict,
                 **ret,
             }
         )
-        lstm_ret = ret[f'WER/{mode} ctc_pred']
+        lstm_ret = ret[f"WER/{mode} ctc_pred"]
     return lstm_ret
 
 

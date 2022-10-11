@@ -184,7 +184,9 @@ class Processor:
         optimizer = utils.Optimizer(model, self.arg.optimizer_args)
         if "decay_power" in self.arg.optimizer_args:
             max_steps = len(self.data_loader["train"]) * self.arg.num_epoch
-            optimizer.set_lr_scheduler(self.arg.optimizer_args["decay_power"], max_steps)
+            optimizer.set_lr_scheduler(
+                self.arg.optimizer_args["decay_power"], max_steps
+            )
         print("Loading model finished.")
         self.recoder.print_log("Params: {}".format(self.get_parameter_number(model)))
         return model, optimizer

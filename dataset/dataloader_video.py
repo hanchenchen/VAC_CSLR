@@ -15,11 +15,12 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.utils.data as data
+import torchvision.transforms as T
 
 # import pyarrow as pa
 from PIL import Image
 from torch.utils.data.sampler import Sampler
-import torchvision.transforms as T
+
 from utils import video_augmentation
 
 sys.path.append("..")
@@ -55,7 +56,7 @@ class BaseFeeder(data.Dataset):
         self.img_norm = T.Normalize(
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225],
-            )
+        )
         print("")
 
     def __getitem__(self, idx):
