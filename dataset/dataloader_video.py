@@ -94,8 +94,8 @@ class BaseFeeder(data.Dataset):
             if phase in self.dict.keys():
                 label_list.append(self.dict[phase][0])
         img_list = [Image.open(img_path).convert("RGB") for img_path in img_list]
-        if self.transform_mode == "train":
-            img_list = [self.img_randaug(img) for img in img_list]
+        # if self.transform_mode == "train":
+        #     img_list = [self.img_randaug(img) for img in img_list]
         img_list = [np.asarray(img) for img in img_list]
         return (
             # [
