@@ -1,6 +1,7 @@
 import glob
 import os
 import pdb
+import random
 import sys
 import time
 import warnings
@@ -9,7 +10,6 @@ import cv2
 import pandas
 import six
 import torch
-import random
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -124,8 +124,8 @@ class BaseFeeder(data.Dataset):
             if phase in self.dict.keys():
                 label_list.append(self.dict[phase][0])
         img_list = [Image.open(img_path).convert("RGB") for img_path in img_list]
-        # if self.transform_mode == "train":
-        #     img_list = [self.img_randaug(img) for img in img_list]
+        if self.transform_mode == "train":
+            img_list = [self.img_randaug(img) for img in img_list]
         img_list = [np.asarray(img) for img in img_list]
         label_proposals = [self.del_ins_sub(label_list, op_ratio=0)] + [
             self.del_ins_sub(label_list) for _ in range(self.proposal_num)

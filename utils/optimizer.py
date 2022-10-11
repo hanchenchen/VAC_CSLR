@@ -1,11 +1,11 @@
 import numpy as np
 import torch
 import torch.optim as optim
-from transformers.optimization import AdamW
 from transformers import (
-    get_polynomial_decay_schedule_with_warmup,
     get_cosine_schedule_with_warmup,
+    get_polynomial_decay_schedule_with_warmup,
 )
+from transformers.optimization import AdamW
 
 
 class Optimizer(object):

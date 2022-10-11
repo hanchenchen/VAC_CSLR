@@ -56,7 +56,7 @@ class SLRModel(nn.Module):
         self.conv2d = getattr(models, c2d_type)(pretrained=True)
         self.conv2d.fc = nn.Identity()
         self.conv1d = TemporalConv(
-            input_size=512,
+            input_size=2048,
             hidden_size=hidden_size,
             conv_type=conv_type,
             use_bn=use_bn,
@@ -342,11 +342,14 @@ class SLRModel(nn.Module):
             else self.decoder.decode(logits, lgt, batch_first=False, probs=False)
         )
 
-        encoded_len_hs = self.len_model(x.permute(1, 0, 2), lgt)
-        L, B, C = encoded_len_hs["hidden"].shape
-        len_logits = self.len_predictor(
-            encoded_len_hs["hidden"].permute(1, 0, 2).reshape(B, -1)
-        )
+        if "LenPred" in self.loss_weights:
+            encoded_len_hs = self.len_model(x.permute(1, 0, 2), lgt)
+            L, B, C = encoded_len_hs["hidden"].shape
+            len_logits = self.len_predictor(
+                encoded_len_hs["hidden"].permute(1, 0, 2).reshape(B, -1)
+            )
+        else:
+            len_logits = None
 
         return {
             "sequence_feat": encoded_hs["predictions"],
@@ -503,13 +506,14 @@ class SLRModel(nn.Module):
             elif k == "CADecoder":
                 target = ret_dict["ca_label"].reshape(-1)
                 pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
-                exit()
                 ce_loss = self.loss["CE"](pred, target)
                 ce_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
                 loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-ce_acc"] = ce_acc.item()
                 pred = ret_dict["conf_logits"]
-                target = torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
+                target = (
+                    torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
+                )
                 conf_loss = self.loss["CE"](pred, target)
                 conf_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()

@@ -77,7 +77,7 @@ class Decode(object):
             ret_list.append([])
             for beam_idx in range(N_beams):
                 first_result = beam_result[batch_idx][beam_idx][
-                    : out_seq_len[batch_idx][0]
+                    : out_seq_len[batch_idx][beam_idx]
                 ]
                 if len(first_result) != 0:
                     first_result = torch.stack([x[0] for x in groupby(first_result)])
