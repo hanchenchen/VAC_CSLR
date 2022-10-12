@@ -73,25 +73,35 @@ class Decode(object):
             nn_output, vid_lgt
         )
         ret_list = []
+        label_proposals = []
         for batch_idx in range(len(nn_output)):
-            ret_list.append([])
+            label_proposals.append([])
+            ret_list.append({})
             for beam_idx in range(N_beams):
                 first_result = beam_result[batch_idx][beam_idx][
                     : out_seq_len[batch_idx][beam_idx]
                 ]
                 if len(first_result) != 0:
                     first_result = torch.stack([x[0] for x in groupby(first_result)])
+                ret_list[batch_idx][beam_idx] = {
+                    "ctc": " ".join(
+                        [
+                            self.i2g_dict[int(gloss_id)]
+                            for idx, gloss_id in enumerate(first_result)
+                        ]
+                    )
+                }
                 res = (
                     [len(self.i2g_dict) + 1]
                     + [int(gloss_id) for idx, gloss_id in enumerate(first_result)]
                     + [0 for i in range(max_label_len - len(first_result) - 1)]
                 )
-                ret_list[batch_idx].append(res[:30])
-        label_proposals = torch.LongTensor(ret_list)
+                label_proposals[batch_idx].append(res[:max_label_len])
+        label_proposals = torch.LongTensor(label_proposals)
         label_proposals_mask = torch.zeros(label_proposals.shape).masked_fill_(
             torch.eq(label_proposals, 0), -float("inf")
         )
-        return label_proposals, label_proposals_mask
+        return label_proposals, label_proposals_mask, ret_list
 
     def MaxDecode(self, nn_output, vid_lgt):
         index_list = torch.argmax(nn_output, axis=2)
@@ -119,12 +129,36 @@ class Decode(object):
         index_list = torch.argmax(nn_output, axis=2)
         batchsize, lgt = index_list.shape
         ret_list = []
+        ca_decoded_list = []
         for batch_idx in range(batchsize):
             filtered = index_list[batch_idx][: torch.sum((mask[batch_idx] == 0).int())]
             ret_list.append(
                 [
                     (self.i2g_dict[int(gloss_id)], idx)
-                    for idx, gloss_id in enumerate(index_list[batch_idx])
+                    for idx, gloss_id in enumerate(filtered)
                 ]
+            )
+            ca_decoded_list.append(
+                " ".join(
+                    [
+                        self.i2g_dict[int(gloss_id)]
+                        for idx, gloss_id in enumerate(filtered)
+                    ]
+                )
+            )
+        return ret_list, ca_decoded_list
+
+    def i2g(self, index_list):
+        batchsize, lgt = index_list.shape
+        ret_list = []
+        for batch_idx in range(batchsize):
+            filtered = index_list[batch_idx]
+            ret_list.append(
+                " ".join(
+                    [
+                        self.i2g_dict[int(gloss_id)]
+                        for idx, gloss_id in enumerate(filtered) if int(gloss_id) in self.i2g_dict
+                    ]
+                )
             )
         return ret_list

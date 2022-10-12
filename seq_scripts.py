@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -119,6 +120,7 @@ def seq_eval(
 ):
     model.eval()
     total_info = []
+    ca_results = []
     total_pred = defaultdict(list)
     loss_kv_dict = defaultdict(list)
     stat = {i: [0, 0] for i in range(len(loader.dataset.dict))}
@@ -146,6 +148,8 @@ def seq_eval(
         for k, v in ret_dict.items():
             if "_pred" in k:
                 total_pred[k] += v
+            if "ca_results" == k:
+                ca_results += ret_dict[k]
     for k, v in loss_kv_dict.items():
         loss_kv_dict[k] = sum(v) / len(v)
     gather_total_pred = {
@@ -157,6 +161,21 @@ def seq_eval(
         gather_total_info,
         total_info,
     )
+    total_info = []
+    for i in gather_total_info:
+        total_info += i
+
+    gather_ca_results = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(
+        gather_ca_results,
+        ca_results,
+    )
+    ca_results = []
+    for i in gather_ca_results:
+        ca_results += i
+    for i in range(len(ca_results)):
+        ca_results[i]['info'] = total_info[i]
+
     for k, v in total_pred.items():
         dist.all_gather_object(
             gather_total_pred[k],
@@ -167,9 +186,6 @@ def seq_eval(
         for i in temp:
             gather_total_pred[k] += i
 
-    total_info = []
-    for i in gather_total_info:
-        total_info += i
     lstm_ret = 100.0
     if dist.get_rank() == 0:
         try:
@@ -190,6 +206,13 @@ def seq_eval(
                     output_dir="epoch_{}_result/".format(epoch),
                     python_evaluate=python_eval,
                 )
+            json.dump(
+                ca_results,
+                open(
+                    work_dir + "epoch_{}_result/".format(epoch) + f"{mode}_ca_results.json",
+                    "w",
+                ),
+            )
         except:
             print("Unexpected error:", sys.exc_info()[0])
         finally:

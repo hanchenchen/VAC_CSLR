@@ -370,8 +370,8 @@ class SLRModel(nn.Module):
 
         ca_label = label_proposals[:, :1, 1:].repeat(1, label_proposals.shape[1], 1)
         ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
-        if self.training:
-            label_proposals, label_proposals_mask = self.decoder.BeamSearch_N(
+        if not self.training:
+            label_proposals, label_proposals_mask, ret_list = self.decoder.BeamSearch_N(
                 ret["sequence_logits"],
                 lgt,
                 probs=False,
@@ -407,18 +407,39 @@ class SLRModel(nn.Module):
         logits = self.classifier_2(encoded_hs[:, 1:, :]).reshape(B, K, N - 1, -1)
         conf_logits = self.conf_predictor(encoded_hs[:, 0, :]).reshape(B, K)
         logits_w_max_conf = logits[torch.arange(B), torch.argmax(conf_logits, dim=1)]
-
+        label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
+            torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
+        ]
         pred = (
             None
             if self.training
-            else self.decoder.MaxDecodeCA(logits_w_max_conf, label_proposals_mask)
+            else self.decoder.MaxDecodeCA(
+                logits_w_max_conf, label_proposals_mask_w_max_conf
+            )[0]
         )
+        if not self.training:
+            conf_score = conf_logits.softmax(-1)
+            gt = self.decoder.i2g(ca_label[:, 0, :])
+            for batch_idx in range(B):
+                ret_list[batch_idx]["gt"] = gt[batch_idx]
+                mask = label_proposals_mask.reshape(B, K, 8, N, N)[
+                    batch_idx, torch.arange(K), 0, 0, 1:
+                ]
+                p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], mask)
+                for beam_idx in range(K):
+                    ret_list[batch_idx][beam_idx]["conf"] = conf_score[batch_idx][
+                        beam_idx
+                    ].item()
+                    ret_list[batch_idx][beam_idx]["ca_res"] = ca_decoded_list[beam_idx]
+        else:
+            ret_list = []
         return {
             "ca_feat": encoded_hs,
             "ca_logits": logits,
             "conf_logits": conf_logits,
             "ca_pred": pred,
             "ca_label": ca_label,
+            "ca_results": ret_list,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):

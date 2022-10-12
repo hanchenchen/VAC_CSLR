@@ -218,7 +218,7 @@ class Processor:
         weights = self.modified_weights(state_dict["model_state_dict"], False)
         self.epoch = state_dict["epoch"]
         # weights = self.modified_weights(state_dict['model_state_dict'])
-        model.load_state_dict(weights, strict=True)
+        model.load_state_dict(weights, strict=False)
 
     @staticmethod
     def modified_weights(state_dict, modified=False):

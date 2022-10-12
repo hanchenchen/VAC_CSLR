@@ -162,6 +162,7 @@ class BaseFeeder(data.Dataset):
             + label_list
             + [0 for i in range(self.max_label_len - len(label_list) - 1)]
         )
+        label_list = label_list[: self.max_label_len]
         return label_list
 
     def read_features(self, index):
