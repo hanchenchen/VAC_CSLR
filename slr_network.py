@@ -122,6 +122,8 @@ class SLRModel(nn.Module):
             )
 
         if "CADecoder" in self.loss_weights:
+            self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
+            torch.nn.init.normal_(self.pos_emb, std=0.02)
             self.embedding_layer = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
@@ -129,7 +131,7 @@ class SLRModel(nn.Module):
                 d_model=hidden_size, nhead=8, batch_first=True
             )
             self.ca_decoder = nn.TransformerDecoder(
-                decoder_layer=decoder_layer, num_layers=6
+                decoder_layer=decoder_layer, num_layers=2
             )
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
@@ -384,7 +386,7 @@ class SLRModel(nn.Module):
             )
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
-        label_proposals_emb = label_proposals_emb.reshape(B * K, N, C)
+        label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
         label_proposals_mask = (
             label_proposals_mask.reshape(B, K, 1, 1, N)
             .repeat(1, 1, 8, N, 1)
