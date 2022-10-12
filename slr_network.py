@@ -48,8 +48,8 @@ class SLRModel(nn.Module):
         self.device = torch.device("cuda")
         self.decoder = None
         self.loss = dict()
-        self.criterion_init()
         self.num_classes = num_classes
+        self.criterion_init()
         self.loss_weights = loss_weights
         self.proposal_num = proposal_num
         self.max_label_len = max_label_len
@@ -380,7 +380,7 @@ class SLRModel(nn.Module):
         )
 
         ca_label = label_proposals[:, :1, 1:].repeat(1, label_proposals.shape[1], 1)
-        ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
+        # ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
         if not self.training:
             label_proposals, label_proposals_mask, ret_list = self.decoder.BeamSearch_N(
                 ret["sequence_logits"],
@@ -410,7 +410,7 @@ class SLRModel(nn.Module):
         encoded_hs = self.ca_decoder(
             tgt=label_proposals_emb,
             src=x,
-            tgt_mask=label_proposals_mask,
+            # tgt_mask=label_proposals_mask,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
@@ -418,14 +418,14 @@ class SLRModel(nn.Module):
         logits = self.classifier_2(encoded_hs[:, 1:, :]).reshape(B, K, N - 1, -1)
         conf_logits = self.conf_predictor(encoded_hs[:, 0, :]).reshape(B, K)
         logits_w_max_conf = logits[torch.arange(B), torch.argmax(conf_logits, dim=1)]
-        label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
-            torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
-        ]
+        # label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
+        #     torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
+        # ]
         pred = (
             None
             if self.training
             else self.decoder.MaxDecodeCA(
-                logits_w_max_conf, label_proposals_mask_w_max_conf
+                logits_w_max_conf, None
             )[0]
         )
         if not self.training:
@@ -538,7 +538,7 @@ class SLRModel(nn.Module):
             elif k == "CADecoder":
                 target = ret_dict["ca_label"].reshape(-1)
                 pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
-                ce_loss = self.loss["CE"](pred, target)
+                ce_loss = self.loss["weighted-CE"](pred, target)
                 ce_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
                 loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-ce_acc"] = ce_acc.item()
@@ -565,6 +565,10 @@ class SLRModel(nn.Module):
         self.loss["distillation"] = SeqKD(T=8)
         self.loss["MSE"] = nn.MSELoss()
         self.loss["CE"] = nn.CrossEntropyLoss()
+        weight = torch.ones(self.num_classes)
+        weight[0] = 1/10.0
+        self.loss["weighted-CE"] = nn.CrossEntropyLoss(weight=weight)
+        
         return self.loss
 
     def forward(

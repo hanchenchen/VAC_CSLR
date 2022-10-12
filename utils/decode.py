@@ -131,11 +131,15 @@ class Decode(object):
         ret_list = []
         ca_decoded_list = []
         for batch_idx in range(batchsize):
-            filtered = index_list[batch_idx][: torch.sum((mask[batch_idx] == 0).int())]
+            if mask is not None:
+                filtered = index_list[batch_idx][: torch.sum((mask[batch_idx] == 0).int())]
+            else:
+                filtered = index_list[batch_idx]
+                # filtered = [i for i in index_list[batch_idx] if i != 0]
             ret_list.append(
                 [
                     (self.i2g_dict[int(gloss_id)], idx)
-                    for idx, gloss_id in enumerate(filtered)
+                    for idx, gloss_id in enumerate(filtered) if int(gloss_id) != 0
                 ]
             )
             ca_decoded_list.append(
