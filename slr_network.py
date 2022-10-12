@@ -565,7 +565,7 @@ class SLRModel(nn.Module):
         self.loss["distillation"] = SeqKD(T=8)
         self.loss["MSE"] = nn.MSELoss()
         self.loss["CE"] = nn.CrossEntropyLoss()
-        weight = torch.ones(self.num_classes)
+        weight = torch.ones(self.num_classes).to(self.device, non_blocking=True)
         weight[0] = 1/10.0
         self.loss["weighted-CE"] = nn.CrossEntropyLoss(weight=weight)
         
