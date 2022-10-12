@@ -132,8 +132,15 @@ class SLRModel(nn.Module):
             decoder_layer = nn.TransformerDecoderLayer(
                 d_model=hidden_size, nhead=8, batch_first=True
             )
-            self.ca_decoder = nn.TransformerDecoder(
-                decoder_layer=decoder_layer, num_layers=2
+            # self.ca_decoder = nn.TransformerDecoder(
+            #     decoder_layer=decoder_layer, num_layers=2
+            # )
+            self.ca_decoder = nn.Transformer(
+                d_model=hidden_size,
+                nhead=8,
+                batch_first=True,
+                num_encoder_layers=2,
+                num_decoder_layers=2,
             )
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
@@ -395,17 +402,17 @@ class SLRModel(nn.Module):
             .reshape(B * K * 8, N, N)
         )
         B, M, C = x.shape
-        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C) + self.pos_kv_emb[:, :M, :]
-        attention_mask = (
-            attention_mask.reshape(B, 1, 1, 1, M)
-            .repeat(1, K, 8, N, 1)
-            .reshape(B * K * 8, N, M)
+        x = (
+            x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+            + self.pos_kv_emb[:, :M, :]
         )
+        attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
         encoded_hs = self.ca_decoder(
             tgt=label_proposals_emb,
-            memory=x,
+            src=x,
             tgt_mask=label_proposals_mask,
-            memory_mask=attention_mask,
+            src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
+            memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
 
         logits = self.classifier_2(encoded_hs[:, 1:, :]).reshape(B, K, N - 1, -1)

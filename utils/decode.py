@@ -157,7 +157,8 @@ class Decode(object):
                 " ".join(
                     [
                         self.i2g_dict[int(gloss_id)]
-                        for idx, gloss_id in enumerate(filtered) if int(gloss_id) in self.i2g_dict
+                        for idx, gloss_id in enumerate(filtered)
+                        if int(gloss_id) in self.i2g_dict
                     ]
                 )
             )

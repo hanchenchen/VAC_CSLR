@@ -174,7 +174,7 @@ def seq_eval(
     for i in gather_ca_results:
         ca_results += i
     for i in range(len(ca_results)):
-        ca_results[i]['info'] = total_info[i]
+        ca_results[i]["info"] = total_info[i]
 
     for k, v in total_pred.items():
         dist.all_gather_object(
@@ -209,7 +209,9 @@ def seq_eval(
             json.dump(
                 ca_results,
                 open(
-                    work_dir + "epoch_{}_result/".format(epoch) + f"{mode}_ca_results.json",
+                    work_dir
+                    + "epoch_{}_result/".format(epoch)
+                    + f"{mode}_ca_results.json",
                     "w",
                 ),
             )
