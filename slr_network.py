@@ -123,7 +123,9 @@ class SLRModel(nn.Module):
 
         if "CADecoder" in self.loss_weights:
             self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
+            self.pos_kv_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
             torch.nn.init.normal_(self.pos_emb, std=0.02)
+            torch.nn.init.normal_(self.pos_kv_emb, std=0.02)
             self.embedding_layer = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
@@ -393,7 +395,7 @@ class SLRModel(nn.Module):
             .reshape(B * K * 8, N, N)
         )
         B, M, C = x.shape
-        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C) + self.pos_kv_emb[:, :M, :]
         attention_mask = (
             attention_mask.reshape(B, 1, 1, 1, M)
             .repeat(1, K, 8, N, 1)
