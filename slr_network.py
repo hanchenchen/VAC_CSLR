@@ -370,7 +370,7 @@ class SLRModel(nn.Module):
         }
 
     def forward_ca_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
-        x = ret["visual_feat"]
+        x = ret["sequence_feat"].permute(1, 0, 2)
         lgt = ret["feat_len"]
         attention_mask = torch.zeros(ret["attention_mask"].shape).to(
             self.device, non_blocking=True
