@@ -381,28 +381,29 @@ class SLRModel(nn.Module):
 
         ca_label = label_proposals[:, :1, 1:].repeat(1, label_proposals.shape[1], 1)
         # ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
-        if not self.training:
-            (
-                label_proposals_,
-                label_proposals_mask_,
-                ret_list,
-            ) = self.decoder.BeamSearch_N(
-                ret["sequence_logits"],
-                lgt,
-                probs=False,
-                N_beams=self.proposal_num,
-                max_label_len=self.max_label_len,
-            )
-            label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
-            label_proposals_mask_ = label_proposals_mask_.to(
-                self.device, non_blocking=True
-            )
-            label_proposals = torch.cat(
-                [label_proposals[:, :1, :], label_proposals_], dim=1
-            )
-            label_proposals_mask = torch.cat(
-                [label_proposals_mask[:, :1, :], label_proposals_mask_], dim=1
-            )
+        # if not self.training:
+        (
+            label_proposals_,
+            label_proposals_mask_,
+            ret_list,
+        ) = self.decoder.BeamSearch_N(
+            ret["sequence_logits"],
+            lgt,
+            probs=False,
+            N_beams=self.proposal_num,
+            max_label_len=self.max_label_len,
+        )
+        label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
+        label_proposals_mask_ = label_proposals_mask_.to(
+            self.device, non_blocking=True
+        )
+        label_proposals = torch.cat(
+            [label_proposals[:, :1, :], label_proposals_], dim=1
+        )
+        label_proposals_mask = torch.cat(
+            [label_proposals_mask[:, :1, :], label_proposals_mask_], dim=1
+        )
+
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
         label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
