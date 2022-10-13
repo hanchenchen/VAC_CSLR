@@ -382,16 +382,26 @@ class SLRModel(nn.Module):
         ca_label = label_proposals[:, :1, 1:].repeat(1, label_proposals.shape[1], 1)
         # ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
         if not self.training:
-            label_proposals, label_proposals_mask, ret_list = self.decoder.BeamSearch_N(
+            (
+                label_proposals_,
+                label_proposals_mask_,
+                ret_list,
+            ) = self.decoder.BeamSearch_N(
                 ret["sequence_logits"],
                 lgt,
                 probs=False,
-                N_beams=self.proposal_num + 1,
+                N_beams=self.proposal_num,
                 max_label_len=self.max_label_len,
             )
-            label_proposals = label_proposals.to(self.device, non_blocking=True)
-            label_proposals_mask = label_proposals_mask.to(
+            label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
+            label_proposals_mask_ = label_proposals_mask_.to(
                 self.device, non_blocking=True
+            )
+            label_proposals = torch.cat(
+                [label_proposals[:, :1, :], label_proposals_], dim=1
+            )
+            label_proposals_mask = torch.cat(
+                [label_proposals_mask[:, :1, :], label_proposals_mask_], dim=1
             )
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
@@ -424,9 +434,7 @@ class SLRModel(nn.Module):
         pred = (
             None
             if self.training
-            else self.decoder.MaxDecodeCA(
-                logits_w_max_conf, None
-            )[0]
+            else self.decoder.MaxDecodeCA(logits_w_max_conf, None)[0]
         )
         if not self.training:
             conf_score = conf_logits.softmax(-1)
@@ -539,9 +547,16 @@ class SLRModel(nn.Module):
                 target = ret_dict["ca_label"].reshape(-1)
                 pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
                 ce_loss = self.loss["weighted-CE"](pred, target)
-                ce_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                pred_idx = torch.argmax(pred, dim=1)
+                ce_acc_0 = (
+                    torch.eq(pred_idx[target == 0], target[target == 0]).float().mean()
+                )
+                ce_acc_wo_0 = (
+                    torch.eq(pred_idx[target != 0], target[target != 0]).float().mean()
+                )
                 loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-ce_acc"] = ce_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-ce_acc-wo-0"] = ce_acc_wo_0.item()
+                loss_kv[f"{phase}/Acc/{k}-ce_acc-0"] = ce_acc_0.item()
                 pred = ret_dict["conf_logits"]
                 target = (
                     torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
@@ -566,7 +581,7 @@ class SLRModel(nn.Module):
         self.loss["MSE"] = nn.MSELoss()
         self.loss["CE"] = nn.CrossEntropyLoss()
         weight = torch.ones(self.num_classes).to(self.device, non_blocking=True)
-        weight[0] = 1/10.0
+        weight[0] = 1 / 10.0
         self.loss["weighted-CE"] = nn.CrossEntropyLoss(weight=weight)
         
         return self.loss
