@@ -145,7 +145,7 @@ class Decode(object):
             ca_decoded_list.append(
                 " ".join(
                     [
-                        self.i2g_dict[int(gloss_id)]
+                        self.i2g_dict[int(gloss_id)]  if int(gloss_id) != 0 else '[PAD]'
                         for idx, gloss_id in enumerate(filtered)
                     ]
                 )
