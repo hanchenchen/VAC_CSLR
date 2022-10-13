@@ -83,8 +83,8 @@ class Decode(object):
                 ]
                 if len(first_result) != 0:
                     first_result = torch.stack([x[0] for x in groupby(first_result)])
-                ret_list[batch_idx][beam_idx] = {
-                    "ctc": " ".join(
+                ret_list[batch_idx][beam_idx+1] = {
+                    "inp_": " ".join(
                         [
                             self.i2g_dict[int(gloss_id)]
                             for idx, gloss_id in enumerate(first_result)
@@ -132,20 +132,23 @@ class Decode(object):
         ca_decoded_list = []
         for batch_idx in range(batchsize):
             if mask is not None:
-                filtered = index_list[batch_idx][: torch.sum((mask[batch_idx] == 0).int())]
+                filtered = index_list[batch_idx][
+                    : torch.sum((mask[batch_idx] == 0).int())
+                ]
             else:
                 filtered = index_list[batch_idx]
                 # filtered = [i for i in index_list[batch_idx] if i != 0]
             ret_list.append(
                 [
                     (self.i2g_dict[int(gloss_id)], idx)
-                    for idx, gloss_id in enumerate(filtered) if int(gloss_id) != 0
+                    for idx, gloss_id in enumerate(filtered)
+                    if int(gloss_id) != 0
                 ]
             )
             ca_decoded_list.append(
                 " ".join(
                     [
-                        self.i2g_dict[int(gloss_id)]  if int(gloss_id) != 0 else '[PAD]'
+                        self.i2g_dict[int(gloss_id)] if int(gloss_id) != 0 else "[PAD]"
                         for idx, gloss_id in enumerate(filtered)
                     ]
                 )

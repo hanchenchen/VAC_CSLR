@@ -370,7 +370,7 @@ class SLRModel(nn.Module):
         }
 
     def forward_ca_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
-        x = ret["sequence_feat"].permute(1, 0, 2)
+        x = ret["visual_feat"]
         lgt = ret["feat_len"]
         attention_mask = torch.zeros(ret["attention_mask"].shape).to(
             self.device, non_blocking=True
@@ -441,15 +441,17 @@ class SLRModel(nn.Module):
             gt = self.decoder.i2g(ca_label[:, 0, :])
             for batch_idx in range(B):
                 ret_list[batch_idx]["gt"] = gt[batch_idx]
+                ret_list[batch_idx][0] = {}
+                ret_list[batch_idx][0]["inp_"] = gt[batch_idx]
                 mask = label_proposals_mask.reshape(B, K, 8, N, N)[
                     batch_idx, torch.arange(K), 0, 0, 1:
                 ]
                 p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], mask)
                 for beam_idx in range(K):
+                    ret_list[batch_idx][beam_idx]["pred"] = ca_decoded_list[beam_idx]
                     ret_list[batch_idx][beam_idx]["conf"] = conf_score[batch_idx][
                         beam_idx
                     ].item()
-                    ret_list[batch_idx][beam_idx]["ca_res"] = ca_decoded_list[beam_idx]
         else:
             ret_list = []
         return {
@@ -583,7 +585,7 @@ class SLRModel(nn.Module):
         weight = torch.ones(self.num_classes).to(self.device, non_blocking=True)
         weight[0] = 1 / 10.0
         self.loss["weighted-CE"] = nn.CrossEntropyLoss(weight=weight)
-        
+
         return self.loss
 
     def forward(
