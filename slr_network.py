@@ -71,14 +71,6 @@ class SLRModel(nn.Module):
             bidirectional=True,
             dropout=0.3,
         )
-        # encoder_configuration = BertConfig(
-        #     num_hidden_layers=2,
-        #     hidden_size=hidden_size,
-        #     num_attention_heads=8,
-        #     # hidden_dropout_prob=0.3,
-        #     # attention_probs_dropout_prob=0.3,
-        # )
-        # self.temporal_model = BertModel(encoder_configuration, add_pooling_layer=False)
 
         decoder_configuration = BertConfig(
             num_hidden_layers=1,
@@ -135,6 +127,16 @@ class SLRModel(nn.Module):
             # self.ca_decoder = nn.TransformerDecoder(
             #     decoder_layer=decoder_layer, num_layers=2
             # )
+            encoder_configuration = BertConfig(
+                num_hidden_layers=2,
+                hidden_size=hidden_size,
+                num_attention_heads=8,
+                # hidden_dropout_prob=0.3,
+                # attention_probs_dropout_prob=0.3,
+            )
+            self.l_model_1 = BertModel(encoder_configuration, add_pooling_layer=False)
+            self.l_model_2 = BertModel(encoder_configuration, add_pooling_layer=False)
+
             self.ca_decoder = nn.Transformer(
                 d_model=hidden_size,
                 nhead=8,
@@ -433,12 +435,16 @@ class SLRModel(nn.Module):
         ca_unmatched_label = ca_unmatched_label[:, :, 1:]
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
-        label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
-        label_proposals_mask = (
-            label_proposals_mask.reshape(B, K, 1, 1, N)
-            .repeat(1, 1, 8, N, 1)
-            .reshape(B * K * 8, N, N)
-        )
+        masked_hs = self.l_model_1(
+            inputs_embeds=label_proposals_emb.reshape(B * K, N, C),
+            attention_mask=label_proposals_mask.reshape(B * K, N),
+        ).last_hidden_state
+        label_proposals_emb = masked_hs + self.pos_emb
+        # label_proposals_mask = (
+        #     label_proposals_mask.reshape(B, K, 1, 1, N)
+        #     .repeat(1, 1, 8, N, 1)
+        #     .reshape(B * K * 8, N, N)
+        # )
         B, M, C = x.shape
         x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
@@ -452,7 +458,11 @@ class SLRModel(nn.Module):
         
         label_proposals_emb_conf = self.embedding_layer_conf(label_proposals)
         B, K, N, C = label_proposals_emb_conf.shape
-        label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
+        masked_hs = self.l_model_2(
+            inputs_embeds=label_proposals_emb_conf.reshape(B * K, N, C),
+            attention_mask=label_proposals_mask.reshape(B * K, N),
+        ).last_hidden_state
+        label_proposals_emb_conf = masked_hs + self.pos_emb_conf
         conf_hs = self.ca_conf_model(
             tgt=label_proposals_emb_conf,
             src=x + self.pos_kv_emb_conf[:, :M, :],
@@ -467,6 +477,12 @@ class SLRModel(nn.Module):
         # label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
         #     torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
         # ]
+        pred_label_proposals =[]
+        conf_pred = (
+            None
+            if self.training
+            else self.decoder.MaxDecodeCA(logits_w_max_conf, None, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), :])[0]
+        )
         pred = (
             None
             if self.training
@@ -497,6 +513,7 @@ class SLRModel(nn.Module):
             "ca_logits": logits,
             "conf_logits": conf_logits,
             "ca_pred": pred,
+            "conf_pred": pred,
             "ca_label": ca_label,
             "ca_results": ret_list,
             "ca_unmatched_label": ca_unmatched_label

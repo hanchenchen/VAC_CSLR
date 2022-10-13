@@ -115,8 +115,8 @@ class Decode(object):
             )
         return ret_list
 
-    def MaxDecodeCA(self, nn_output, mask):
-        index_list = torch.argmax(nn_output, axis=2)
+    def MaxDecodeCA(self, nn_output, mask, index_list=None):
+        index_list = torch.argmax(nn_output, axis=2) if index_list is None else index_list
         batchsize, lgt = index_list.shape
         ret_list = []
         ca_decoded_list = []
