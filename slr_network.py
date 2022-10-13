@@ -142,6 +142,13 @@ class SLRModel(nn.Module):
                 num_encoder_layers=2,
                 num_decoder_layers=2,
             )
+            self.ca_conf_model = nn.Transformer(
+                d_model=hidden_size,
+                nhead=8,
+                batch_first=True,
+                num_encoder_layers=2,
+                num_decoder_layers=2,
+            )
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
 
@@ -425,9 +432,16 @@ class SLRModel(nn.Module):
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
+        conf_hs = self.ca_conf_model(
+            tgt=label_proposals_emb,
+            src=x,
+            # tgt_mask=label_proposals_mask,
+            src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
+            memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
+        )
 
         logits = self.classifier_2(encoded_hs[:, 1:, :]).reshape(B, K, N - 1, -1)
-        conf_logits = self.conf_predictor(encoded_hs[:, 0, :]).reshape(B, K)
+        conf_logits = self.conf_predictor(conf_hs[:, 0, :]).reshape(B, K)
         logits_w_max_conf = logits[torch.arange(B), torch.argmax(conf_logits, dim=1)]
         # label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
         #     torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
