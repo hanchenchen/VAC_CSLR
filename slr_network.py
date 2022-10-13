@@ -386,30 +386,38 @@ class SLRModel(nn.Module):
             torch.eq(ret["attention_mask"], 0), -float("inf")
         )
 
-        ca_label = label_proposals[:, :1, 1:].repeat(1, label_proposals.shape[1], 1)
+        ca_label = label_proposals[:, :1, 1:]
         # ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
-        # if not self.training:
-        (
-            label_proposals_,
-            label_proposals_mask_,
-            ret_list,
-        ) = self.decoder.BeamSearch_N(
-            ret["sequence_logits"],
-            lgt,
-            probs=False,
-            N_beams=self.proposal_num,
-            max_label_len=self.max_label_len,
-        )
-        label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
-        label_proposals_mask_ = label_proposals_mask_.to(
-            self.device, non_blocking=True
-        )
-        label_proposals = torch.cat(
-            [label_proposals[:, :1, :], label_proposals_], dim=1
-        )
-        label_proposals_mask = torch.cat(
-            [label_proposals_mask[:, :1, :], label_proposals_mask_], dim=1
-        )
+        if not self.training:
+            (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
+                ret["sequence_logits"],
+                lgt,
+                probs=False,
+                N_beams=self.proposal_num*2,
+                max_label_len=self.max_label_len,
+            )
+            label_proposals = label_proposals_.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask_.to(
+                self.device, non_blocking=True
+            )
+            ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+        else:
+            (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
+                ret["sequence_logits"],
+                lgt,
+                probs=False,
+                N_beams=self.proposal_num,
+                max_label_len=self.max_label_len,
+            )
+            label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
+            label_proposals_mask_ = label_proposals_mask_.to(
+                self.device, non_blocking=True
+            )
+            label_proposals = torch.cat([label_proposals, label_proposals_], dim=1)
+            label_proposals_mask = torch.cat(
+                [label_proposals_mask, label_proposals_mask_], dim=1
+            )
+            ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
 
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
@@ -454,15 +462,17 @@ class SLRModel(nn.Module):
         if not self.training:
             conf_score = conf_logits.softmax(-1)
             gt = self.decoder.i2g(ca_label[:, 0, :])
+            ret_list = [{} for batch_idx in range(B)]
             for batch_idx in range(B):
                 ret_list[batch_idx]["gt"] = gt[batch_idx]
-                ret_list[batch_idx][0] = {}
-                ret_list[batch_idx][0]["inp_"] = gt[batch_idx]
-                mask = label_proposals_mask.reshape(B, K, 8, N, N)[
-                    batch_idx, torch.arange(K), 0, 0, 1:
-                ]
-                p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], mask)
+                inp = self.decoder.i2g(label_proposals[batch_idx, :, 1:])
+                # mask = label_proposals_mask.reshape(B, K, 8, N, N)[
+                #     batch_idx, torch.arange(K), 0, 0, 1:
+                # ]
+                p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], None)
                 for beam_idx in range(K):
+                    ret_list[batch_idx][beam_idx] = {}
+                    ret_list[batch_idx][beam_idx]["inp_"] = inp[beam_idx]
                     ret_list[batch_idx][beam_idx]["pred"] = ca_decoded_list[beam_idx]
                     ret_list[batch_idx][beam_idx]["conf"] = conf_score[batch_idx][
                         beam_idx

@@ -72,25 +72,15 @@ class Decode(object):
         beam_result, beam_scores, timesteps, out_seq_len = self.ctc_decoder.decode(
             nn_output, vid_lgt
         )
-        ret_list = []
         label_proposals = []
         for batch_idx in range(len(nn_output)):
             label_proposals.append([])
-            ret_list.append({})
             for beam_idx in range(N_beams):
                 first_result = beam_result[batch_idx][beam_idx][
                     : out_seq_len[batch_idx][beam_idx]
                 ]
                 if len(first_result) != 0:
                     first_result = torch.stack([x[0] for x in groupby(first_result)])
-                ret_list[batch_idx][beam_idx+1] = {
-                    "inp_": " ".join(
-                        [
-                            self.i2g_dict[int(gloss_id)]
-                            for idx, gloss_id in enumerate(first_result)
-                        ]
-                    )
-                }
                 res = (
                     [len(self.i2g_dict) + 1]
                     + [int(gloss_id) for idx, gloss_id in enumerate(first_result)]
@@ -101,7 +91,7 @@ class Decode(object):
         label_proposals_mask = torch.zeros(label_proposals.shape).masked_fill_(
             torch.eq(label_proposals, 0), -float("inf")
         )
-        return label_proposals, label_proposals_mask, ret_list
+        return label_proposals, label_proposals_mask
 
     def MaxDecode(self, nn_output, vid_lgt):
         index_list = torch.argmax(nn_output, axis=2)
@@ -148,7 +138,9 @@ class Decode(object):
             ca_decoded_list.append(
                 " ".join(
                     [
-                        self.i2g_dict[int(gloss_id)] if int(gloss_id) != 0 else "[PAD]"
+                        self.i2g_dict[int(gloss_id)]
+                        if int(gloss_id) in self.i2g_dict
+                        else ("[PAD]" if int(gloss_id) == 0 else "[UNK]")
                         for idx, gloss_id in enumerate(filtered)
                     ]
                 )
@@ -164,8 +156,9 @@ class Decode(object):
                 " ".join(
                     [
                         self.i2g_dict[int(gloss_id)]
-                        for idx, gloss_id in enumerate(filtered)
                         if int(gloss_id) in self.i2g_dict
+                        else ("[PAD]" if int(gloss_id) == 0 else "[UNK]")
+                        for idx, gloss_id in enumerate(filtered)
                     ]
                 )
             )
