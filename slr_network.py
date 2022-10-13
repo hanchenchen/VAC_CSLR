@@ -440,18 +440,18 @@ class SLRModel(nn.Module):
             attention_mask=label_proposals_mask.reshape(B * K, N),
         ).last_hidden_state
         label_proposals_emb = masked_hs + self.pos_emb
-        # label_proposals_mask = (
-        #     label_proposals_mask.reshape(B, K, 1, 1, N)
-        #     .repeat(1, 1, 8, N, 1)
-        #     .reshape(B * K * 8, N, N)
-        # )
+        tgt_mask = (
+            label_proposals_mask.reshape(B, K, 1, 1, N)
+            .repeat(1, 1, 8, N, 1)
+            .reshape(B * K * 8, N, N)
+        )
         B, M, C = x.shape
         x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
         encoded_hs = self.ca_decoder(
             tgt=label_proposals_emb,
             src=x + self.pos_kv_emb[:, :M, :],
-            # tgt_mask=label_proposals_mask,
+            tgt_mask=tgt_mask,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
@@ -466,7 +466,7 @@ class SLRModel(nn.Module):
         conf_hs = self.ca_conf_model(
             tgt=label_proposals_emb_conf,
             src=x + self.pos_kv_emb_conf[:, :M, :],
-            # tgt_mask=label_proposals_mask,
+            tgt_mask=tgt_mask,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
