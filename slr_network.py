@@ -129,9 +129,9 @@ class SLRModel(nn.Module):
             self.embedding_layer = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
-            decoder_layer = nn.TransformerDecoderLayer(
-                d_model=hidden_size, nhead=8, batch_first=True
-            )
+            # decoder_layer = nn.TransformerDecoderLayer(
+            #     d_model=hidden_size, nhead=8, batch_first=True
+            # )
             # self.ca_decoder = nn.TransformerDecoder(
             #     decoder_layer=decoder_layer, num_layers=2
             # )
@@ -141,6 +141,13 @@ class SLRModel(nn.Module):
                 batch_first=True,
                 num_encoder_layers=2,
                 num_decoder_layers=2,
+            )
+            self.pos_emb_conf = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
+            self.pos_kv_emb_conf = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.pos_emb_conf, std=0.02)
+            torch.nn.init.normal_(self.pos_kv_emb_conf, std=0.02)
+            self.embedding_layer_conf = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
             self.ca_conf_model = nn.Transformer(
                 d_model=hidden_size,
@@ -377,7 +384,7 @@ class SLRModel(nn.Module):
         }
 
     def forward_ca_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
-        x = ret["visual_feat"]
+        x = ret["visual_feat"].detach()
         lgt = ret["feat_len"]
         attention_mask = torch.zeros(ret["attention_mask"].shape).to(
             self.device, non_blocking=True
@@ -386,7 +393,7 @@ class SLRModel(nn.Module):
             torch.eq(ret["attention_mask"], 0), -float("inf")
         )
 
-        ca_label = label_proposals[:, :1, 1:]
+        ca_label = label_proposals[:, :1, :]
         # ca_label = ca_label.masked_fill_(torch.eq(ca_label, 0), -100)
         if not self.training:
             (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
@@ -401,6 +408,8 @@ class SLRModel(nn.Module):
                 self.device, non_blocking=True
             )
             ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+            ca_unmatched_label = ca_label.masked_fill_(torch.eq(ca_label, label_proposals), -100)
+        
         else:
             (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
                 ret["sequence_logits"],
@@ -418,7 +427,10 @@ class SLRModel(nn.Module):
                 [label_proposals_mask, label_proposals_mask_], dim=1
             )
             ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+            ca_unmatched_label = ca_label.masked_fill_(torch.eq(ca_label, label_proposals), -100)
 
+        ca_label = ca_label[:, :, 1:]
+        ca_unmatched_label = ca_unmatched_label[:, :, 1:]
         label_proposals_emb = self.embedding_layer(label_proposals)
         B, K, N, C = label_proposals_emb.shape
         label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
@@ -428,21 +440,22 @@ class SLRModel(nn.Module):
             .reshape(B * K * 8, N, N)
         )
         B, M, C = x.shape
-        x = (
-            x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-            + self.pos_kv_emb[:, :M, :]
-        )
+        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
         encoded_hs = self.ca_decoder(
             tgt=label_proposals_emb,
-            src=x,
+            src=x + self.pos_kv_emb[:, :M, :],
             # tgt_mask=label_proposals_mask,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
+        
+        label_proposals_emb_conf = self.embedding_layer_conf(label_proposals)
+        B, K, N, C = label_proposals_emb_conf.shape
+        label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
         conf_hs = self.ca_conf_model(
-            tgt=label_proposals_emb,
-            src=x,
+            tgt=label_proposals_emb_conf,
+            src=x + self.pos_kv_emb_conf[:, :M, :],
             # tgt_mask=label_proposals_mask,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
@@ -486,6 +499,7 @@ class SLRModel(nn.Module):
             "ca_pred": pred,
             "ca_label": ca_label,
             "ca_results": ret_list,
+            "ca_unmatched_label": ca_unmatched_label
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -584,6 +598,17 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-ce_acc-wo-0"] = ce_acc_wo_0.item()
                 loss_kv[f"{phase}/Acc/{k}-ce_acc-0"] = ce_acc_0.item()
+                
+                target = ret_dict["ca_unmatched_label"].reshape(-1)
+                pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
+                ce_unmatch_loss = self.loss["CE"](pred, target)
+                pred_idx = torch.argmax(pred, dim=1)
+                ce_unmatch_acc = (
+                    torch.eq(pred_idx, target).float().mean()
+                )
+                loss_kv[f"{phase}/Loss/{k}-ce_unmatch_loss"] = ce_unmatch_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-ce_unmatch_acc"] = ce_unmatch_acc.item()
+                
                 pred = ret_dict["conf_logits"]
                 target = (
                     torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
@@ -593,7 +618,7 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-conf_acc"] = conf_acc.item()
 
-                l = ce_loss + conf_loss
+                l = ce_loss + conf_loss + ce_unmatch_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
