@@ -474,7 +474,7 @@ class SLRModel(nn.Module):
             .repeat(1, 1, 8, N, 1)
             .reshape(B * K * 8, N, N)
         )
-        tgt_mask = tgt_mask.masked_fill(torch.triu(torch.ones_like(tgt_mask), diagonal=1).bool(), -float("inf"))
+        tgt_mask_ar = tgt_mask.masked_fill(torch.triu(torch.ones_like(tgt_mask), diagonal=1).bool(), -float("inf"))
         x = ret["visual_feat_1"]
         B, M, C = x.shape
         x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
@@ -482,7 +482,7 @@ class SLRModel(nn.Module):
         encoded_hs = self.ca_decoder(
             tgt=label_proposals_emb,
             src=x + self.pos_kv_emb[:, :M, :],
-            tgt_mask=tgt_mask,
+            tgt_mask=tgt_mask_ar,
             src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
             memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
         )
