@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.utils.data as data
 import torchvision.transforms as T
-
 # import pyarrow as pa
 from PIL import Image
 from torch.utils.data.sampler import Sampler
@@ -146,17 +145,18 @@ class BaseFeeder(data.Dataset):
         op_num = int(len(label_list) * op_ratio)
         for op in torch.rand(op_num):
             op = int(op * 3)
-            if op == 0:  # del
-                del_idx = random.choice([i for i in range(len(label_list))])
-                label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
-            elif op == 1:  # ins
+            if op == 0:  # ins
                 ins_idx = random.choice([i for i in range(len(label_list) + 1)])
                 ins_label = random.choice([i for i in range(len(self.dict))]) + 1
                 label_list = label_list[:ins_idx] + [ins_label] + label_list[ins_idx:]
-            elif op == 2:  # sub
+            elif op == 1:  # sub
                 sub_idx = random.choice([i for i in range(len(label_list))])
                 sub_label = random.choice([i for i in range(len(self.dict))]) + 1
                 label_list[sub_idx] = sub_label
+            elif op == 2:  # del
+                del_idx = random.choice([i for i in range(len(label_list))])
+                # label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
+                label_list[del_idx] = len(self.dict) + 1
         label_list = (
             [len(self.dict) + 1]
             + label_list
