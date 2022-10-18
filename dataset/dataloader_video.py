@@ -109,6 +109,18 @@ class BaseFeeder(data.Dataset):
             input_data, label = self.read_features(idx)
             return input_data, label, self.inputs_list[idx]["original_info"]
 
+    def read_labels(self, index):
+        # load file info
+        fi = self.inputs_list[index]
+        label_list = []
+        for phase in fi["label"].split(" "):
+            if phase == "":
+                continue
+            if phase in self.dict.keys():
+                label_list.append(self.dict[phase][0])
+        label_proposals = self.del_ins_sub(label_list, op_ratio=0)
+        return label_proposals
+
     def read_video(self, index, num_glosses=-1):
         # load file info
         fi = self.inputs_list[index]
@@ -126,9 +138,11 @@ class BaseFeeder(data.Dataset):
         if self.transform_mode == "train":
             img_list = [self.img_randaug(img) for img in img_list]
         img_list = [np.asarray(img) for img in img_list]
-        label_proposals = [self.del_ins_sub(label_list, op_ratio=0)] + [
-            self.del_ins_sub(label_list) for _ in range(self.proposal_num)
-        ]
+        label_proposals = (
+            [self.del_ins_sub(label_list, op_ratio=0)] 
+            # + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
+            + [self.read_labels(_) for _ in random.choices(range(len(self)), k=self.proposal_num)]
+            )
         return (
             # [
             #     cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)

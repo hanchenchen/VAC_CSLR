@@ -1,4 +1,4 @@
-feeder: dataset.dataloader_video_1018.BaseFeeder
+feeder: dataset.dataloader_video.BaseFeeder
 phase: train
 dataset: phoenix14
 # dataset: phoenix14-si5
