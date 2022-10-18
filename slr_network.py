@@ -159,10 +159,11 @@ class SLRModel(nn.Module):
             #     num_decoder_layers=4,
             # )
             
+            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            # self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            # self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
             
@@ -268,11 +269,11 @@ class SLRModel(nn.Module):
         visual_feat = conv1d_outputs["visual_feat"].permute(1, 0, 2)
         lgt = conv1d_outputs["feat_len"].int()
 
-        # conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
-        # visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
+        conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
+        visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
         
-        # conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
-        # visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
+        conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
+        visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
 
         B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
@@ -291,8 +292,8 @@ class SLRModel(nn.Module):
             "frame_feat": frame_feat,
             "frame_num": len_x,
             "visual_feat": visual_feat,
-            # "visual_feat_1": visual_feat_1,
-            # "visual_feat_2": visual_feat_2,
+            "visual_feat_1": visual_feat_1,
+            "visual_feat_2": visual_feat_2,
             "feat_len": lgt,
             "conv_logits": conv1d_outputs["conv_logits"],
             "conv_pred": conv_pred,
@@ -430,99 +431,32 @@ class SLRModel(nn.Module):
         ca_label = label_proposals[:, :1, :]
         ca_label = ca_label.masked_fill(torch.eq(ca_label, 0), -100)
         if not self.training:
-            # (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
-            #     ret["sequence_logits"],
-            #     lgt,
-            #     probs=False,
-            #     N_beams=self.proposal_num*2,
-            #     max_label_len=self.max_label_len,
-            # )
-            # label_proposals = label_proposals_.to(self.device, non_blocking=True)
-            # label_proposals_mask = label_proposals_mask_.to(
-            #     self.device, non_blocking=True
-            # )
             ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
-            # ca_unmatched_label = ca_label.masked_fill(torch.eq(ca_label, label_proposals), -100)
-        
         else:
-            # (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
-            #     ret["sequence_logits"],
-            #     lgt,
-            #     probs=False,
-            #     N_beams=self.proposal_num,
-            #     max_label_len=self.max_label_len,
-            # )
-            # label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
-            # label_proposals_mask_ = label_proposals_mask_.to(
-            #     self.device, non_blocking=True
-            # )
-            # label_proposals = torch.cat([label_proposals, label_proposals_], dim=1)
-            # label_proposals_mask = torch.cat(
-            #     [label_proposals_mask, label_proposals_mask_], dim=1
-            # )
             ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
-            # ca_unmatched_label = ca_label.masked_fill(torch.eq(ca_label, label_proposals), -100)
 
         ca_label = ca_label[:, :, 1:]
-        # ca_unmatched_label = ca_unmatched_label[:, :, 1:]
-        # label_proposals_emb = self.embedding_layer(label_proposals)
+
         
         B, K, N = label_proposals_mask.shape
-        # masked_hs = self.l_model_1(
-        #     inputs_embeds=label_proposals_emb.reshape(B * K, N, C),
-        #     attention_mask=label_proposals_mask.reshape(B * K, N),
-        # ).last_hidden_state
-        # label_proposals_emb = masked_hs + self.pos_emb
-
-        # label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
-        tgt_mask = (
-            label_proposals_mask.reshape(B, K, 1, 1, N)
-            .repeat(1, 1, 8, N, 1)
-            .reshape(B * K * 8, N, N)
-        )
-        # tgt_mask_ar = tgt_mask.masked_fill(torch.triu(torch.ones_like(tgt_mask), diagonal=1).bool(), -float("inf"))
-        # x = ret["visual_feat_1"]
-        # B, M, C = x.shape
-        # x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        # attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
-        # encoded_hs = self.ca_decoder(
-        #     tgt=label_proposals_emb,
-        #     src=x + self.pos_kv_emb[:, :M, :],
-        #     tgt_mask=tgt_mask_ar,
-        #     src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
-        #     memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
-        # )
-        
         label_proposals_emb_conf = self.embedding_layer_conf(label_proposals)
         B, K, N, C = label_proposals_emb_conf.shape
-        # masked_hs = self.l_model_2(
-        #     inputs_embeds=label_proposals_emb_conf.reshape(B * K, N, C),
-        #     attention_mask=label_proposals_mask.reshape(B * K, N),
-        # ).last_hidden_state
-        # label_proposals_emb_conf = masked_hs + self.pos_emb_conf
-        label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
-        x = ret["visual_feat"]
-        B, M, C = x.shape
-        # x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        # conf_hs = self.ca_conf_model(
-        #     tgt=label_proposals_emb_conf,
-        #     src=x + self.pos_kv_emb_conf[:, :M, :],
-        #     tgt_mask=tgt_mask,
-        #     src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
-        #     memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
-        # )
-        g_hs = self.gloss_encoder(
-            src=x + self.pos_kv_emb_conf[:, :M, :],
-            mask=attention_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M),
-            )
-        s_hs = self.sign_encoder(
-            src=label_proposals_emb_conf,
-            mask=tgt_mask,
-            )
-        s_hs = s_hs.reshape(B, K, N, C).mean(dim=2)
-        g_hs = g_hs.reshape(B, 1, M, C).repeat(1, K, 1, 1).mean(dim=2)
 
-        conf_logits = torch.mul(s_hs, g_hs).sum(dim=-1)
+        label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
+        x = ret["visual_feat_2"]
+        B, M, C = x.shape
+        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        inp_emb = torch.cat([label_proposals_emb_conf, x], dim=1)
+        inp_mask = torch.cat([label_proposals_mask.reshape(B, K, N), attention_mask.reshape(B, 1, M).repeat(1, K, 1)], dim=2)
+        inp_mask = inp_mask.reshape(B, K, 1, 1, M+N).repeat(1, 1, 8, M+N, 1).reshape(B * K * 8, M+N, M+N)
+
+        g_s_hs = self.gloss_sign_encoder(
+            src=inp_emb,
+            mask=inp_mask,
+            )
+        g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, 0, :]
+
+        conf_logits = self.conf_predictor(g_s_hs).reshape(B, K)
 
         # logits = self.classifier_2(encoded_hs[:, :-1, :]).reshape(B, K, N - 1, -1)
         # conf_logits = self.conf_predictor(conf_hs[:, 0, :]).reshape(B, K)
