@@ -268,11 +268,11 @@ class SLRModel(nn.Module):
         visual_feat = conv1d_outputs["visual_feat"].permute(1, 0, 2)
         lgt = conv1d_outputs["feat_len"].int()
 
-        conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
-        visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
+        # conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
+        # visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
         
-        conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
-        visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
+        # conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
+        # visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
 
         B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
@@ -291,8 +291,8 @@ class SLRModel(nn.Module):
             "frame_feat": frame_feat,
             "frame_num": len_x,
             "visual_feat": visual_feat,
-            "visual_feat_1": visual_feat_1,
-            "visual_feat_2": visual_feat_2,
+            # "visual_feat_1": visual_feat_1,
+            # "visual_feat_2": visual_feat_2,
             "feat_len": lgt,
             "conv_logits": conv1d_outputs["conv_logits"],
             "conv_pred": conv_pred,
@@ -501,7 +501,7 @@ class SLRModel(nn.Module):
         # ).last_hidden_state
         # label_proposals_emb_conf = masked_hs + self.pos_emb_conf
         label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
-        x = ret["visual_feat_2"]
+        x = ret["visual_feat"]
         B, M, C = x.shape
         # x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         # conf_hs = self.ca_conf_model(
