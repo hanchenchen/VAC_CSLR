@@ -114,13 +114,13 @@ class SLRModel(nn.Module):
             )
 
         if "CADecoder" in self.loss_weights:
-            self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
-            self.pos_kv_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
-            torch.nn.init.normal_(self.pos_emb, std=0.02)
-            torch.nn.init.normal_(self.pos_kv_emb, std=0.02)
-            self.embedding_layer = nn.Embedding(
-                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
-            )
+            # self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
+            # self.pos_kv_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            # torch.nn.init.normal_(self.pos_emb, std=0.02)
+            # torch.nn.init.normal_(self.pos_kv_emb, std=0.02)
+            # self.embedding_layer = nn.Embedding(
+            #     num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
+            # )
             # decoder_layer = nn.TransformerDecoderLayer(
             #     d_model=hidden_size, nhead=8, batch_first=True
             # )
@@ -137,13 +137,13 @@ class SLRModel(nn.Module):
             # self.l_model_1 = BertModel(encoder_configuration, add_pooling_layer=False)
             # self.l_model_2 = BertModel(encoder_configuration, add_pooling_layer=False)
 
-            self.ca_decoder = nn.Transformer(
-                d_model=hidden_size,
-                nhead=8,
-                batch_first=True,
-                num_encoder_layers=4,
-                num_decoder_layers=4,
-            )
+            # self.ca_decoder = nn.Transformer(
+            #     d_model=hidden_size,
+            #     nhead=8,
+            #     batch_first=True,
+            #     num_encoder_layers=4,
+            #     num_decoder_layers=4,
+            # )
             self.pos_emb_conf = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
             self.pos_kv_emb_conf = nn.Parameter(torch.zeros(1, 200, hidden_size))
             torch.nn.init.normal_(self.pos_emb_conf, std=0.02)
@@ -151,13 +151,18 @@ class SLRModel(nn.Module):
             self.embedding_layer_conf = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
-            self.ca_conf_model = nn.Transformer(
-                d_model=hidden_size,
-                nhead=8,
-                batch_first=True,
-                num_encoder_layers=4,
-                num_decoder_layers=4,
-            )
+            # self.ca_conf_model = nn.Transformer(
+            #     d_model=hidden_size,
+            #     nhead=8,
+            #     batch_first=True,
+            #     num_encoder_layers=4,
+            #     num_decoder_layers=4,
+            # )
+            
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
             
@@ -460,32 +465,33 @@ class SLRModel(nn.Module):
 
         ca_label = ca_label[:, :, 1:]
         # ca_unmatched_label = ca_unmatched_label[:, :, 1:]
-        label_proposals_emb = self.embedding_layer(label_proposals)
+        # label_proposals_emb = self.embedding_layer(label_proposals)
         
-        B, K, N, C = label_proposals_emb.shape
+        B, K, N = label_proposals_mask.shape
         # masked_hs = self.l_model_1(
         #     inputs_embeds=label_proposals_emb.reshape(B * K, N, C),
         #     attention_mask=label_proposals_mask.reshape(B * K, N),
         # ).last_hidden_state
         # label_proposals_emb = masked_hs + self.pos_emb
-        label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
+
+        # label_proposals_emb = label_proposals_emb.reshape(B * K, N, C) + self.pos_emb
         tgt_mask = (
             label_proposals_mask.reshape(B, K, 1, 1, N)
             .repeat(1, 1, 8, N, 1)
             .reshape(B * K * 8, N, N)
         )
-        tgt_mask_ar = tgt_mask.masked_fill(torch.triu(torch.ones_like(tgt_mask), diagonal=1).bool(), -float("inf"))
-        x = ret["visual_feat_1"]
-        B, M, C = x.shape
-        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
-        encoded_hs = self.ca_decoder(
-            tgt=label_proposals_emb,
-            src=x + self.pos_kv_emb[:, :M, :],
-            tgt_mask=tgt_mask_ar,
-            src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
-            memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
-        )
+        # tgt_mask_ar = tgt_mask.masked_fill(torch.triu(torch.ones_like(tgt_mask), diagonal=1).bool(), -float("inf"))
+        # x = ret["visual_feat_1"]
+        # B, M, C = x.shape
+        # x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        # attention_mask = attention_mask.reshape(B, 1, 1, 1, M)
+        # encoded_hs = self.ca_decoder(
+        #     tgt=label_proposals_emb,
+        #     src=x + self.pos_kv_emb[:, :M, :],
+        #     tgt_mask=tgt_mask_ar,
+        #     src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
+        #     memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
+        # )
         
         label_proposals_emb_conf = self.embedding_layer_conf(label_proposals)
         B, K, N, C = label_proposals_emb_conf.shape
@@ -496,60 +502,73 @@ class SLRModel(nn.Module):
         # label_proposals_emb_conf = masked_hs + self.pos_emb_conf
         label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
         x = ret["visual_feat_2"]
-        x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        conf_hs = self.ca_conf_model(
-            tgt=label_proposals_emb_conf,
+        B, M, C = x.shape
+        # x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        # conf_hs = self.ca_conf_model(
+        #     tgt=label_proposals_emb_conf,
+        #     src=x + self.pos_kv_emb_conf[:, :M, :],
+        #     tgt_mask=tgt_mask,
+        #     src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
+        #     memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
+        # )
+        g_hs = self.gloss_encoder(
             src=x + self.pos_kv_emb_conf[:, :M, :],
-            tgt_mask=tgt_mask,
-            src_mask=attention_mask.repeat(1, K, 8, M, 1).reshape(B * K * 8, M, M),
-            memory_mask=attention_mask.repeat(1, K, 8, N, 1).reshape(B * K * 8, N, M),
-        )
+            mask=attention_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M),
+            )
+        s_hs = self.sign_encoder(
+            src=label_proposals_emb_conf,
+            mask=tgt_mask,
+            )
+        s_hs = s_hs.reshape(B, K, N, C).mean(dim=2)
+        g_hs = g_hs.reshape(B, 1, M, C).repeat(1, K, 1, 1).mean(dim=2)
 
-        logits = self.classifier_2(encoded_hs[:, :-1, :]).reshape(B, K, N - 1, -1)
-        conf_logits = self.conf_predictor(conf_hs[:, 0, :]).reshape(B, K)
-        logits_w_max_conf = logits[torch.arange(B), torch.argmax(conf_logits, dim=1)]
-        # label_proposals_mask_w_max_conf = label_proposals_mask.reshape(B, K, 8, N, N)[
-        #     torch.arange(B), torch.argmax(conf_logits, dim=1), 0, 0, 1:
-        # ]
+        conf_logits = torch.mul(s_hs, g_hs).sum(dim=-1)
+
+        # logits = self.classifier_2(encoded_hs[:, :-1, :]).reshape(B, K, N - 1, -1)
+        # conf_logits = self.conf_predictor(conf_hs[:, 0, :]).reshape(B, K)
+        # logits_w_max_conf = logits[torch.arange(B), torch.argmax(conf_logits, dim=1)]
+        label_proposals_mask_w_max_conf = label_proposals_mask[
+            torch.arange(B), torch.argmax(conf_logits, dim=1), 1:
+        ]
         pred_label_proposals =[]
         conf_pred = (
             None
             if self.training
-            else self.decoder.MaxDecodeCA(logits_w_max_conf, None, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), :])[0]
+            else self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), :])[0]
         )
-        pred = (
-            None
-            if self.training
-            else self.decoder.MaxDecodeCA(logits_w_max_conf, None)[0]
-        )
-        if not self.training:
-            conf_score = conf_logits.softmax(-1)
-            gt = self.decoder.i2g(ca_label[:, 0, :])
-            ret_list = [{} for batch_idx in range(B)]
-            for batch_idx in range(B):
-                ret_list[batch_idx]["gt"] = gt[batch_idx]
-                inp = self.decoder.i2g(label_proposals[batch_idx, :, 1:])
-                # mask = label_proposals_mask.reshape(B, K, 8, N, N)[
-                #     batch_idx, torch.arange(K), 0, 0, 1:
-                # ]
-                p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], None)
-                for beam_idx in range(K):
-                    ret_list[batch_idx][beam_idx] = {}
-                    ret_list[batch_idx][beam_idx]["inp_"] = inp[beam_idx]
-                    ret_list[batch_idx][beam_idx]["pred"] = ca_decoded_list[beam_idx]
-                    ret_list[batch_idx][beam_idx]["conf"] = conf_score[batch_idx][
-                        beam_idx
-                    ].item()
-        else:
-            ret_list = []
+        # pred = (
+        #     None
+        #     if self.training
+        #     else self.decoder.MaxDecodeCA(logits_w_max_conf, label_proposals_mask_w_max_conf)[0]
+        # )
+        # if not self.training:
+        #     conf_score = conf_logits.softmax(-1)
+        #     gt = self.decoder.i2g(ca_label[:, 0, :])
+        #     ret_list = [{} for batch_idx in range(B)]
+        #     for batch_idx in range(B):
+        #         ret_list[batch_idx]["gt"] = gt[batch_idx]
+        #         inp = self.decoder.i2g(label_proposals[batch_idx, :, 1:])
+        #         # mask = label_proposals_mask.reshape(B, K, 8, N, N)[
+        #         #     batch_idx, torch.arange(K), 0, 0, 1:
+        #         # ]
+        #         p, ca_decoded_list = self.decoder.MaxDecodeCA(logits[batch_idx], None)
+        #         for beam_idx in range(K):
+        #             ret_list[batch_idx][beam_idx] = {}
+        #             ret_list[batch_idx][beam_idx]["inp_"] = inp[beam_idx]
+        #             ret_list[batch_idx][beam_idx]["pred"] = ca_decoded_list[beam_idx]
+        #             ret_list[batch_idx][beam_idx]["conf"] = conf_score[batch_idx][
+        #                 beam_idx
+        #             ].item()
+        # else:
+        #     ret_list = []
         return {
-            "ca_feat": encoded_hs,
-            "ca_logits": logits,
+            # "ca_feat": encoded_hs,
+            # "ca_logits": logits,
             "conf_logits": conf_logits,
-            "ca_pred": pred,
-            "conf_pred": pred,
-            "ca_label": ca_label,
-            "ca_results": ret_list,
+            # "ca_pred": pred,
+            "conf_pred": conf_pred,
+            # "ca_label": ca_label,
+            # "ca_results": ret_list,
             # "ca_unmatched_label": ca_unmatched_label
         }
 
@@ -636,19 +655,19 @@ class SLRModel(nn.Module):
                 l = self.loss["MSE"](pred, target)
                 loss_kv[f"{phase}/Acc/{k}"] = torch.abs(pred - target).mean()
             elif k == "CADecoder":
-                target = ret_dict["ca_label"].reshape(-1)
-                pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
-                ce_loss = self.loss["CE"](pred, target)
-                pred_idx = torch.argmax(pred, dim=1)
-                ce_acc_0 = (
-                    torch.eq(pred_idx[target == 0], target[target == 0]).float().mean()
-                )
-                ce_acc_wo_0 = (
-                    torch.eq(pred_idx[target != 0], target[target != 0]).float().mean()
-                )
-                loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-ce_acc-wo-0"] = ce_acc_wo_0.item()
-                loss_kv[f"{phase}/Acc/{k}-ce_acc-0"] = ce_acc_0.item()
+                # target = ret_dict["ca_label"].reshape(-1)
+                # pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
+                # ce_loss = self.loss["CE"](pred, target)
+                # pred_idx = torch.argmax(pred, dim=1)
+                # ce_acc_0 = (
+                #     torch.eq(pred_idx[target == 0], target[target == 0]).float().mean()
+                # )
+                # ce_acc_wo_0 = (
+                #     torch.eq(pred_idx[target != 0], target[target != 0]).float().mean()
+                # )
+                # loss_kv[f"{phase}/Loss/{k}-ce_loss"] = ce_loss.item()
+                # loss_kv[f"{phase}/Acc/{k}-ce_acc-wo-0"] = ce_acc_wo_0.item()
+                # loss_kv[f"{phase}/Acc/{k}-ce_acc-0"] = ce_acc_0.item()
                 
                 # target = ret_dict["ca_unmatched_label"].reshape(-1)
                 # pred = ret_dict["ca_logits"].reshape(target.shape[0], -1)
@@ -669,7 +688,7 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-conf_acc"] = conf_acc.item()
 
-                l = ce_loss + conf_loss
+                l = conf_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
