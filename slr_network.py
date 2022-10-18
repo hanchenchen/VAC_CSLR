@@ -395,7 +395,7 @@ class SLRModel(nn.Module):
         # ).last_hidden_state.permute(1, 0, 2)
         encoded_hs = self.temporal_model(x.permute(1, 0, 2), lgt)
 
-        logits = self.classifier(encoded_hs["predictions"])
+        logits = self.classifier(encoded_hs["predictions"]+ + ret["visual_feat"].permute(1, 0, 2))
         pred = (
             None
             if self.training
