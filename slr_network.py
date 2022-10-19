@@ -393,7 +393,7 @@ class SLRModel(nn.Module):
         }
 
     def forward_encoder(self, ret):
-        x = ret["visual_feat"]
+        x = ret["contextual_sign_feats"]
         lgt = ret["feat_len"]
         attention_mask = ret["attention_mask"]
 
@@ -456,7 +456,9 @@ class SLRModel(nn.Module):
         sign_emb = self.sign_encoder(
             src=sign_emb,
             mask=inp_mask,
-            )+self.sign_ca_pos_emb[:, :M, :]
+            )
+        contextual_sign_feats = sign_emb
+        sign_emb = sign_emb+self.sign_ca_pos_emb[:, :M, :]
         sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
 
@@ -514,6 +516,7 @@ class SLRModel(nn.Module):
             "conf_pred": conf_pred,
             # "ca_label": ca_label,
             "ca_results": ret_list,
+            "contextual_sign_feats": contextual_sign_feats,
             # "ca_unmatched_label": ca_unmatched_label
         }
 
@@ -669,8 +672,6 @@ class SLRModel(nn.Module):
         res = self.forward_conv_layer(x, len_x)
         if "DecoderReg" in self.loss_weights or "DecoderCTC" in self.loss_weights:
             res.update(self.forward_masked_encoder(res))
-        if "SeqCTC" in self.loss_weights or "Dist" in self.loss_weights:
-            res.update(self.forward_encoder(res))
         if "DecoderReg" in self.loss_weights:
             res.update(self.forward_reg_decoder(res))
         if "DecoderCTC" in self.loss_weights:
@@ -683,6 +684,8 @@ class SLRModel(nn.Module):
             res.update(
                 self.forward_ca_decoder(res, label_proposals, label_proposals_mask)
             )
+        if "SeqCTC" in self.loss_weights or "Dist" in self.loss_weights:
+            res.update(self.forward_encoder(res))
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
         else:
