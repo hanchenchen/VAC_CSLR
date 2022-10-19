@@ -165,11 +165,11 @@ class SLRModel(nn.Module):
             torch.nn.init.normal_(self.sign_ca_pos_emb, std=0.02)
 
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
             self.conf_predictor = nn.Linear(hidden_size, 1)
             
