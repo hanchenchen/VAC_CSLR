@@ -447,7 +447,9 @@ class SLRModel(nn.Module):
         gloss_emb = self.gloss_encoder(
             src=gloss_emb,
             mask=inp_mask,
-            )+self.gloss_ca_pos_emb[:, :N, :]
+            )
+        textual_gloss_emb = gloss_emb
+        gloss_emb = gloss_emb+self.gloss_ca_pos_emb[:, :N, :]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
@@ -456,9 +458,17 @@ class SLRModel(nn.Module):
         sign_emb = self.sign_encoder(
             src=sign_emb,
             mask=inp_mask,
-            )+self.sign_ca_pos_emb[:, :M, :]
+            )
+        textual_sign_emb = sign_emb
+        sign_emb = sign_emb+self.sign_ca_pos_emb[:, :M, :]
+
         sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
+
+        textual_gloss_emb = textual_gloss_emb.reshape(B, K, N, C)[:, :, 0, :]
+        textual_sign_emb = textual_sign_emb.reshape(B, 1, M, C)[:, :, 0, :]
+
+        contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
 
         inp_emb = torch.cat([gloss_emb, sign_emb], dim=1)
         inp_mask = torch.cat([gloss_mask, sign_mask], dim=2)
@@ -510,6 +520,7 @@ class SLRModel(nn.Module):
             # "ca_feat": encoded_hs,
             # "ca_logits": logits,
             "conf_logits": conf_logits,
+            "contrast_logits": contrast_logits,
             # "ca_pred": pred,
             "conf_pred": conf_pred,
             # "ca_label": ca_label,
@@ -633,7 +644,13 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-conf_acc"] = conf_acc.item()
 
-                l = conf_loss
+                pred = ret_dict["contrast_logits"]
+                contrast_loss = self.loss["CE"](pred, target)
+                contrast_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
+
+                l = conf_loss + contrast_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
