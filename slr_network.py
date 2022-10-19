@@ -159,12 +159,16 @@ class SLRModel(nn.Module):
             torch.nn.init.normal_(self.gloss_pos_emb, std=0.02)
             self.sign_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
             torch.nn.init.normal_(self.sign_pos_emb, std=0.02)
+            self.gloss_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.gloss_ca_pos_emb, std=0.02)
+            self.sign_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.sign_ca_pos_emb, std=0.02)
 
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            # self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
-            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            # self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
-            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
             self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
 
             self.conf_predictor = nn.Linear(hidden_size, 1)
@@ -439,10 +443,20 @@ class SLRModel(nn.Module):
         B, K, N, C = gloss_emb.shape
         gloss_emb = gloss_emb.reshape(B * K, N, C) + self.gloss_pos_emb[:, :N, :]
         gloss_mask = label_proposals_mask # .reshape(B, K, N)
+        inp_mask = gloss_mask.reshape(B, K, 1, 1, N).repeat(1, 1, 8, N, 1).reshape(B * K * 8, N, N)
+        gloss_emb = self.gloss_encoder(
+            src=gloss_emb,
+            mask=inp_mask,
+            )+self.gloss_ca_pos_emb[:, :N, :]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
         sign_emb = sign_emb + self.sign_pos_emb[:, :M, :]
+        inp_mask = sign_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M)
+        sign_emb = self.sign_encoder(
+            src=sign_emb,
+            mask=inp_mask,
+            )+self.sign_ca_pos_emb[:, :M, :]
         sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
 
