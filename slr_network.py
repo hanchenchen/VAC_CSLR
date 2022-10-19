@@ -167,34 +167,34 @@ class SLRModel(nn.Module):
             self.classifier_2 = NormLinear(hidden_size, self.num_classes)
             self.conf_predictor = nn.Linear(hidden_size, 1)
             
-            self.conv1d_1 = TemporalConv(
-                input_size=2048,
-                hidden_size=hidden_size,
-                conv_type=conv_type,
-                use_bn=use_bn,
-                num_classes=num_classes,
-            )
+            # self.conv1d_1 = TemporalConv(
+            #     input_size=2048,
+            #     hidden_size=hidden_size,
+            #     conv_type=conv_type,
+            #     use_bn=use_bn,
+            #     num_classes=num_classes,
+            # )
             
-            self.conv1d_2 = TemporalConv(
-                input_size=2048,
-                hidden_size=hidden_size,
-                conv_type=conv_type,
-                use_bn=use_bn,
-                num_classes=num_classes,
-            )
+            # self.conv1d_2 = TemporalConv(
+            #     input_size=2048,
+            #     hidden_size=hidden_size,
+            #     conv_type=conv_type,
+            #     use_bn=use_bn,
+            #     num_classes=num_classes,
+            # )
 
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
-            self.conv1d_1.fc = NormLinear(hidden_size, self.num_classes)
-            self.conv1d_2.fc = NormLinear(hidden_size, self.num_classes)
+            # self.conv1d_1.fc = NormLinear(hidden_size, self.num_classes)
+            # self.conv1d_2.fc = NormLinear(hidden_size, self.num_classes)
         else:
             self.classifier = nn.Linear(hidden_size, self.num_classes)
             self.classifier = nn.Linear(hidden_size, self.num_classes)
         if share_classifier:
             self.conv1d.fc = self.classifier
-            self.conv1d_1.fc = self.classifier
-            self.conv1d_2.fc = self.classifier
+            # self.conv1d_1.fc = self.classifier
+            # self.conv1d_2.fc = self.classifier
 
     #     self.register_backward_hook(self.backward_hook)
 
@@ -269,11 +269,11 @@ class SLRModel(nn.Module):
         visual_feat = conv1d_outputs["visual_feat"].permute(1, 0, 2)
         lgt = conv1d_outputs["feat_len"].int()
 
-        conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
-        visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
+        # conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
+        # visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
         
-        conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
-        visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
+        # conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
+        # visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
 
         B, T, C = visual_feat.shape
         attention_mask = torch.ones(B, T).to(x)
@@ -292,8 +292,8 @@ class SLRModel(nn.Module):
             "frame_feat": frame_feat,
             "frame_num": len_x,
             "visual_feat": visual_feat,
-            "visual_feat_1": visual_feat_1,
-            "visual_feat_2": visual_feat_2,
+            # "visual_feat_1": visual_feat_1,
+            # "visual_feat_2": visual_feat_2,
             "feat_len": lgt,
             "conv_logits": conv1d_outputs["conv_logits"],
             "conv_pred": conv_pred,
@@ -443,7 +443,7 @@ class SLRModel(nn.Module):
         B, K, N, C = label_proposals_emb_conf.shape
 
         label_proposals_emb_conf = label_proposals_emb_conf.reshape(B * K, N, C) + self.pos_emb_conf
-        x = ret["visual_feat_2"]
+        x = ret["visual_feat"]
         B, M, C = x.shape
         x = x.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
         inp_emb = torch.cat([label_proposals_emb_conf, x], dim=1)
