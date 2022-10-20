@@ -173,13 +173,13 @@ class SLRModel(nn.Module):
 
             self.conf_predictor = nn.Linear(hidden_size, 1)
             
-            self.conv1d_1 = TemporalConv(
-                input_size=2048,
-                hidden_size=hidden_size,
-                conv_type=conv_type,
-                use_bn=use_bn,
-                num_classes=num_classes,
-            )
+            # self.conv1d_1 = TemporalConv(
+            #     input_size=2048,
+            #     hidden_size=hidden_size,
+            #     conv_type=conv_type,
+            #     use_bn=use_bn,
+            #     num_classes=num_classes,
+            # )
             
             # self.conv1d_2 = TemporalConv(
             #     input_size=2048,
@@ -192,14 +192,14 @@ class SLRModel(nn.Module):
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
             self.conv1d.fc = NormLinear(hidden_size, self.num_classes)
-            self.conv1d_1.fc = NormLinear(hidden_size, self.num_classes)
+            # self.conv1d_1.fc = NormLinear(hidden_size, self.num_classes)
             # self.conv1d_2.fc = NormLinear(hidden_size, self.num_classes)
         else:
             self.classifier = nn.Linear(hidden_size, self.num_classes)
             self.classifier = nn.Linear(hidden_size, self.num_classes)
         if share_classifier:
             self.conv1d.fc = self.classifier
-            self.conv1d_1.fc = self.classifier
+            # self.conv1d_1.fc = self.classifier
             # self.conv1d_2.fc = self.classifier
 
     #     self.register_backward_hook(self.backward_hook)
@@ -275,8 +275,8 @@ class SLRModel(nn.Module):
         visual_feat = conv1d_outputs["visual_feat"].permute(1, 0, 2)
         lgt = conv1d_outputs["feat_len"].int()
 
-        conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
-        visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
+        # conv1d_outputs_1 = self.conv1d_1(frame_feat.transpose(1, 2), len_x)
+        # visual_feat_1 = conv1d_outputs_1["visual_feat"].permute(1, 0, 2)
         
         # conv1d_outputs_2 = self.conv1d_2(frame_feat.transpose(1, 2), len_x)
         # visual_feat_2 = conv1d_outputs_2["visual_feat"].permute(1, 0, 2)
@@ -298,7 +298,7 @@ class SLRModel(nn.Module):
             "frame_feat": frame_feat,
             "frame_num": len_x,
             "visual_feat": visual_feat,
-            "visual_feat_1": visual_feat_1,
+            # "visual_feat_1": visual_feat_1,
             # "visual_feat_2": visual_feat_2,
             "feat_len": lgt,
             "conv_logits": conv1d_outputs["conv_logits"],
@@ -451,7 +451,7 @@ class SLRModel(nn.Module):
         textual_gloss_emb = gloss_emb
         gloss_emb = gloss_emb+self.gloss_ca_pos_emb[:, :N, :]
 
-        sign_emb = ret["visual_feat_1"]
+        sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
         sign_emb = sign_emb + self.sign_pos_emb[:, :M, :]
         inp_mask = sign_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M)
@@ -644,13 +644,13 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-conf_acc"] = conf_acc.item()
 
-                pred = ret_dict["contrast_logits"]
-                contrast_loss = self.loss["CE"](pred, target)
-                contrast_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
-                loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
+                # pred = ret_dict["contrast_logits"]
+                # contrast_loss = self.loss["CE"](pred, target)
+                # contrast_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                # loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
+                # loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
 
-                l = conf_loss + contrast_loss
+                l = conf_loss # + contrast_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
