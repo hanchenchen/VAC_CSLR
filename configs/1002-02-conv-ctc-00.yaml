@@ -22,7 +22,7 @@ loss_weights:
   ConvCTC: 1.0
   Dist: 10.0
   # Add
-  SimsiamAlign: 1.0
+  # SimsiamAlign: 1.0
   # LenPred: 1.0
   CADecoder: 1.0
 #load_weights: ''
