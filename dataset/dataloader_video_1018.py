@@ -141,7 +141,7 @@ class BaseFeeder(data.Dataset):
         img_list = [np.asarray(img) for img in img_list]
         label_proposals = (
             [self.del_ins_sub(label_list, op_ratio=0)] 
-            # + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
+            + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
             + [self.read_labels(_) for _ in random.choices(range(len(self)), k=self.proposal_num)]
             )
         label_proposals = torch.stack(label_proposals, dim=0)
