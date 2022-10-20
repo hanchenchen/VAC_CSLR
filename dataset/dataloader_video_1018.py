@@ -10,6 +10,7 @@ import cv2
 import pandas
 import six
 import torch
+import torch.nn.functional as F
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -138,9 +139,12 @@ class BaseFeeder(data.Dataset):
         if self.transform_mode == "train":
             img_list = [self.img_randaug(img) for img in img_list]
         img_list = [np.asarray(img) for img in img_list]
-        label_proposals = [self.del_ins_sub(label_list, op_ratio=0)] + [
-            self.del_ins_sub(label_list) for _ in range(self.proposal_num)
-        ] + [self.read_labels(_) for _ in random.choices(range(len(self)), k=self.proposal_num)]
+        label_proposals = (
+            [self.del_ins_sub(label_list, op_ratio=0)] 
+            # + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
+            + [self.read_labels(_) for _ in random.choices(range(len(self)), k=self.proposal_num)]
+            )
+        label_proposals = torch.stack(label_proposals, dim=0)
         return (
             # [
             #     cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
@@ -172,9 +176,11 @@ class BaseFeeder(data.Dataset):
         label_list = (
             [len(self.dict) + 1]
             + label_list
-            + [0 for i in range(self.max_label_len - len(label_list) - 1)]
+            # + [0 for i in range(self.max_label_len - len(label_list) - 1)]
         )
-        label_list = label_list[: self.max_label_len]
+        label_list = torch.tensor(label_list).float()
+        label_list = F.interpolate(label_list.reshape(1, 1, -1), size=self.max_label_len, mode='nearest')
+        label_list = label_list.reshape(-1).long()
         return label_list
 
     def read_features(self, index):
@@ -270,7 +276,7 @@ class BaseFeeder(data.Dataset):
             for lab in label:
                 padded_label.extend(lab)
             padded_label = torch.LongTensor(padded_label)
-            label_proposals = torch.LongTensor(label_proposals)
+            label_proposals = torch.stack(label_proposals, dim=0)
             label_proposals_mask = torch.zeros(label_proposals.shape).masked_fill_(
                 torch.eq(label_proposals, 0), -float("inf")
             )

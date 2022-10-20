@@ -155,23 +155,48 @@ class SLRModel(nn.Module):
             self.gloss_embedding_layer = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
-            self.gloss_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
-            torch.nn.init.normal_(self.gloss_pos_emb, std=0.02)
-            self.sign_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
-            torch.nn.init.normal_(self.sign_pos_emb, std=0.02)
-            self.gloss_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
-            torch.nn.init.normal_(self.gloss_ca_pos_emb, std=0.02)
-            self.sign_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
-            torch.nn.init.normal_(self.sign_ca_pos_emb, std=0.02)
 
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
-            self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            # self.gloss_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            # torch.nn.init.normal_(self.gloss_pos_emb, std=0.02)
+            # self.sign_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            # torch.nn.init.normal_(self.sign_pos_emb, std=0.02)
+            # self.gloss_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            # torch.nn.init.normal_(self.gloss_ca_pos_emb, std=0.02)
+            # self.sign_ca_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            # torch.nn.init.normal_(self.sign_ca_pos_emb, std=0.02)
 
-            self.conf_predictor = nn.Linear(hidden_size, 1)
+            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            # self.gloss_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            # self.sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            # self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+            self.gloss_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.sign_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.gloss_sign_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size*2,
+                hidden_size=hidden_size*2,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.conf_predictor = nn.Linear(hidden_size*2, 1)
             
             # self.conv1d_1 = TemporalConv(
             #     input_size=2048,
@@ -441,44 +466,32 @@ class SLRModel(nn.Module):
         
         gloss_emb = self.gloss_embedding_layer(label_proposals)
         B, K, N, C = gloss_emb.shape
-        gloss_emb = gloss_emb.reshape(B * K, N, C) + self.gloss_pos_emb[:, :N, :]
-        gloss_mask = label_proposals_mask # .reshape(B, K, N)
-        inp_mask = gloss_mask.reshape(B, K, 1, 1, N).repeat(1, 1, 8, N, 1).reshape(B * K * 8, N, N)
-        gloss_emb = self.gloss_encoder(
-            src=gloss_emb,
-            mask=inp_mask,
-            )
-        textual_gloss_emb = gloss_emb
-        gloss_emb = gloss_emb+self.gloss_ca_pos_emb[:, :N, :]
+        gloss_emb = gloss_emb.reshape(B * K, N, C)
+        gloss_len = torch.tensor([N for _ in range(B*K)])
+
+        gloss_emb = self.gloss_encoder(gloss_emb.permute(1, 0, 2), gloss_len)
+        textual_gloss_emb = gloss_emb['hidden'].permute(1, 0, 2)
+        textual_gloss_emb = textual_gloss_emb.reshape(B, K, -1, C)[:, :, -2:, :].mean(2)
+        gloss_emb = gloss_emb["predictions"]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
-        sign_emb = sign_emb + self.sign_pos_emb[:, :M, :]
-        inp_mask = sign_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M)
-        sign_emb = self.sign_encoder(
-            src=sign_emb,
-            mask=inp_mask,
-            )
-        textual_sign_emb = sign_emb
-        sign_emb = sign_emb+self.sign_ca_pos_emb[:, :M, :]
-
-        sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
-
-        textual_gloss_emb = textual_gloss_emb.reshape(B, K, N, C)[:, :, 0, :]
-        textual_sign_emb = textual_sign_emb.reshape(B, 1, M, C)[:, :, 0, :]
+        sign_len = (lgt*N/M).int()
+        sign_emb = F.interpolate(sign_emb.permute(0, 2, 1), size=N, mode='linear') # B C N
+        sign_emb = self.sign_encoder(sign_emb.permute(2, 0, 1), sign_len) # N B C
+        textual_sign_emb = sign_emb['hidden'].permute(1, 0, 2) # B N C
+        textual_sign_emb = textual_sign_emb.reshape(B, 1, -1, C)[:, :, -2:, :].mean(2)
+        sign_emb = sign_emb["predictions"]
 
         contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
 
-        inp_emb = torch.cat([gloss_emb, sign_emb], dim=1)
-        inp_mask = torch.cat([gloss_mask, sign_mask], dim=2)
-        inp_mask = inp_mask.reshape(B, K, 1, 1, M+N).repeat(1, 1, 8, M+N, 1).reshape(B * K * 8, M+N, M+N)
+        sign_emb = sign_emb.permute(1, 0, 2).reshape(B, 1, N, C).repeat(1, K, 1, 1).reshape(B * K, N, C)
+        gloss_emb = gloss_emb.permute(1, 0, 2).reshape(B * K, N, C)
 
-        g_s_hs = self.gloss_sign_encoder(
-            src=inp_emb,
-            mask=inp_mask,
-            )
-        g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, 0, :]
+        inp_emb = torch.cat([gloss_emb, sign_emb], dim=2).permute(1, 0, 2)
+        inp_len = gloss_len
+        g_s_hs = self.gloss_sign_encoder(inp_emb, inp_len)['hidden']
+        g_s_hs = g_s_hs.permute(1, 0, 2).reshape(B, K, -1, C*2)[:, :, -2:, :].mean(2)
 
         conf_logits = self.conf_predictor(g_s_hs).reshape(B, K)
 
