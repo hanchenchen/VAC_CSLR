@@ -54,7 +54,7 @@ class SLRModel(nn.Module):
         self.proposal_num = proposal_num
         self.max_label_len = max_label_len
         self.conv2d = getattr(models, c2d_type)(pretrained=True)
-        self.conv2d.fc = nn.Identity()
+        self.conv2d.classifier[6] = nn.Linear(4096, 2048)
         self.conv1d = TemporalConv(
             input_size=2048,
             hidden_size=hidden_size,

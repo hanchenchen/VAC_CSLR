@@ -48,7 +48,7 @@ model: slr_network.SLRModel
 decode_mode: beam
 model_args:
   num_classes: 1296
-  c2d_type: resnet50
+  c2d_type: vgg11
   conv_type: 3
   use_bn: 1
   # SMKD
