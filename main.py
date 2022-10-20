@@ -50,7 +50,7 @@ class Processor:
                 eval_model = epoch % self.arg.eval_interval == 0
                 # train end2end model
                 seq_train(
-                    self.data_loader["train"],
+                    self.data_loader["dev"],
                     self.model,
                     self.optimizer,
                     epoch,
@@ -254,8 +254,11 @@ class Processor:
     def load_data(self):
         print("Loading data")
         self.feeder = import_class(self.arg.feeder)
+        # dataset_list = zip(
+        #     ["train", "train_eval", "dev", "test"], [True, False, False, False]
+        # )
         dataset_list = zip(
-            ["train", "train_eval", "dev", "test"], [True, False, False, False]
+            ["train", "train_eval", "dev", "test"], [True, True, True, True]
         )
         for idx, (mode, train_flag) in enumerate(dataset_list):
             arg = self.arg.feeder_args
