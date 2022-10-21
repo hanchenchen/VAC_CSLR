@@ -172,6 +172,14 @@ class SLRModel(nn.Module):
             # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
             # self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
+            self.contrast_gloss_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
             self.gloss_encoder = BiLSTMLayer(
                 rnn_type="LSTM",
                 input_size=hidden_size,
@@ -464,12 +472,12 @@ class SLRModel(nn.Module):
         ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
         ca_label = ca_label[:, :, 1:]
         
-        gloss_emb = self.gloss_embedding_layer(label_proposals)
-        B, K, N, C = gloss_emb.shape
-        gloss_emb = gloss_emb.reshape(B * K, N, C)
+        raw_gloss_emb = self.gloss_embedding_layer(label_proposals)
+        B, K, N, C = raw_gloss_emb.shape
+        raw_gloss_emb = raw_gloss_emb.reshape(B * K, N, C)
         gloss_len = torch.tensor([N for _ in range(B*K)])
 
-        gloss_emb = self.gloss_encoder(gloss_emb.permute(1, 0, 2), gloss_len)
+        gloss_emb = self.contrast_gloss_encoder(raw_gloss_emb.permute(1, 0, 2), gloss_len)
         textual_gloss_emb = gloss_emb['hidden'].permute(1, 0, 2)
         textual_gloss_emb = textual_gloss_emb.reshape(B, K, -1, C)[:, :, -2:, :].mean(2)
         gloss_emb = gloss_emb["predictions"]
@@ -484,6 +492,10 @@ class SLRModel(nn.Module):
         sign_emb = sign_emb["predictions"]
 
         contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
+
+
+        gloss_emb = self.gloss_encoder(raw_gloss_emb.permute(1, 0, 2), gloss_len)
+        gloss_emb = gloss_emb["predictions"]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
