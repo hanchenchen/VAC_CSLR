@@ -41,7 +41,7 @@ feeder_args:
   datatype: 'video'
   num_gloss: -1
   drop_ratio: 1.0
-  proposal_num: 4
+  proposal_num: 32
   max_label_len: 30
 
 model: slr_network.SLRModel
@@ -54,5 +54,5 @@ model_args:
   # SMKD
   share_classifier: True
   weight_norm: True
-  proposal_num: 4
+  # proposal_num: 4
   max_label_len: 30
