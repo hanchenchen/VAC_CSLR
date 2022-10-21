@@ -23,7 +23,7 @@ loss_weights:
   Dist: 10.0
   # Add
   SimsiamAlign: 1.0
-  # LenPred: 1.0
+  LenPred: 1.0
   CADecoder: 1.0
 #load_weights: ''
 
@@ -52,7 +52,7 @@ model_args:
   conv_type: 3
   use_bn: 1
   # SMKD
-  share_classifier: False
+  share_classifier: True
   weight_norm: True
   proposal_num: 4
   max_label_len: 30
