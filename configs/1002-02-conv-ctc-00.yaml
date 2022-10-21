@@ -1,4 +1,4 @@
-feeder: dataset.dataloader_video_1018.BaseFeeder
+feeder: dataset.dataloader_video.BaseFeeder
 phase: train
 dataset: phoenix14
 # dataset: phoenix14-si5
@@ -52,7 +52,7 @@ model_args:
   conv_type: 3
   use_bn: 1
   # SMKD
-  share_classifier: True
+  share_classifier: False
   weight_norm: True
   proposal_num: 4
   max_label_len: 30
