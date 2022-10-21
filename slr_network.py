@@ -180,6 +180,14 @@ class SLRModel(nn.Module):
                 bidirectional=True,
                 dropout=0.3,
             )
+            self.state_contrast_gloss_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
             self.gloss_encoder = BiLSTMLayer(
                 rnn_type="LSTM",
                 input_size=hidden_size,
@@ -205,6 +213,10 @@ class SLRModel(nn.Module):
                 dropout=0.3,
             )
             self.conf_predictor = nn.Linear(hidden_size*2, 1)
+            self.state_predictor = nn.Sequential(
+                nn.Linear(hidden_size*2, hidden_size*2),
+                nn.Linear(hidden_size*2, 1),
+            ) 
             
             # self.conv1d_1 = TemporalConv(
             #     input_size=2048,
@@ -480,7 +492,6 @@ class SLRModel(nn.Module):
         gloss_emb = self.contrast_gloss_encoder(raw_gloss_emb.permute(1, 0, 2), gloss_len)
         textual_gloss_emb = gloss_emb['hidden'].permute(1, 0, 2)
         textual_gloss_emb = textual_gloss_emb.reshape(B, K, -1, C)[:, :, -2:, :].mean(2)
-        gloss_emb = gloss_emb["predictions"]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
@@ -509,6 +520,11 @@ class SLRModel(nn.Module):
         g_s_hs = g_s_hs.permute(1, 0, 2).reshape(B, K, -1, C*2)[:, :, -2:, :].mean(2)
 
         conf_logits = self.conf_predictor(g_s_hs).reshape(B, K)
+
+        state_contrast_gloss_emb = self.state_contrast_gloss_encoder(raw_gloss_emb.permute(1, 0, 2), gloss_len)
+        state_contrast_gloss_emb = state_contrast_gloss_emb["predictions"].permute(1, 0, 2)
+        state_logits = torch.cat([state_contrast_gloss_emb, sign_emb], dim=2).permute(1, 0, 2)
+        state_logits = self.state_predictor(state_logits).reshape(B, K, N).mean(dim=-1)
 
         label_proposals_mask_w_max_conf = label_proposals_mask[
             torch.arange(B), torch.argmax(conf_logits, dim=1), 1:
@@ -553,6 +569,7 @@ class SLRModel(nn.Module):
             "conf_pred": conf_pred,
             # "ca_label": ca_label,
             "ca_results": ret_list,
+            "state_logits": state_logits,
             # "ca_unmatched_label": ca_unmatched_label
         }
 
@@ -678,7 +695,13 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
 
-                l = conf_loss + contrast_loss
+                pred = ret_dict["state_logits"]
+                state_loss = self.loss["CE"](pred, target)
+                state_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-state_loss"] = state_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-state_acc"] = state_acc.item()
+
+                l = conf_loss + contrast_loss + state_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
