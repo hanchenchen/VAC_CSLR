@@ -485,7 +485,10 @@ class SLRModel(nn.Module):
 
         contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
 
-        sign_emb = sign_emb.permute(1, 0, 2).reshape(B, 1, N, C).repeat(1, K, 1, 1).reshape(B * K, N, C)
+        sign_emb = ret["visual_feat"]
+        B, M, C = sign_emb.shape
+        sign_emb = F.interpolate(sign_emb.permute(0, 2, 1), size=N, mode='linear') # B C N
+        sign_emb = sign_emb.permute(0, 2, 1).reshape(B, 1, N, C).repeat(1, K, 1, 1).reshape(B * K, N, C)
         gloss_emb = gloss_emb.permute(1, 0, 2).reshape(B * K, N, C)
 
         inp_emb = torch.cat([gloss_emb, sign_emb], dim=2).permute(1, 0, 2)
