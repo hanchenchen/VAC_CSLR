@@ -113,6 +113,53 @@ class SLRModel(nn.Module):
                 nn.Sigmoid(),
             )
 
+        if "DetectDecoder" in self.loss_weights:
+            self.gloss_embedding_layer_det = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
+            )
+            self.gloss_pos_emb_det = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.gloss_pos_emb_det, std=0.02)
+            self.sign_pos_emb_det = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.sign_pos_emb_det, std=0.02)
+            self.gloss_ca_pos_emb_det = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.gloss_ca_pos_emb_det, std=0.02)
+            self.sign_ca_pos_emb_det = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.sign_ca_pos_emb_det, std=0.02)
+
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_encoder_det = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.sign_encoder_det = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_sign_encoder_det = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+            self.det_predictor = nn.Linear(hidden_size, 1)
+
+        if "CorrectDecoder" in self.loss_weights:
+            self.gloss_embedding_layer_cor = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
+            )
+            self.mask_emb_cor = nn.Parameter(torch.zeros(1, 1, hidden_size))
+            torch.nn.init.normal_(self.mask_emb_cor, std=0.02)
+            self.gloss_pos_emb_cor = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.gloss_pos_emb_cor, std=0.02)
+            self.sign_pos_emb_cor = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.sign_pos_emb_cor, std=0.02)
+            self.gloss_ca_pos_emb_cor = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.gloss_ca_pos_emb_cor, std=0.02)
+            self.sign_ca_pos_emb_cor = nn.Parameter(torch.zeros(1, 200, hidden_size))
+            torch.nn.init.normal_(self.sign_ca_pos_emb_cor, std=0.02)
+
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_encoder_cor = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.sign_encoder_cor = nn.TransformerEncoder(encoder_layer, num_layers=2)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+            self.gloss_sign_encoder_cor = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+            self.cor_predictor = nn.Linear(hidden_size, self.num_classes)
+
+
         if "CADecoder" in self.loss_weights:
             # self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
             # self.pos_kv_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
@@ -425,6 +472,147 @@ class SLRModel(nn.Module):
             "len_logits": len_logits,
         }
 
+    def forward_detect_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
+        lgt = ret["feat_len"]
+        sign_mask = torch.zeros(ret["attention_mask"].shape).to(
+            self.device, non_blocking=True
+        )
+        sign_mask = sign_mask.masked_fill(
+            torch.eq(ret["attention_mask"], 0), -float("inf")
+        )
+        B, K, N = label_proposals.shape
+        row = label_proposals[:, :1, :].reshape(B, 1, 1, N).repeat(1, K, N, 1)
+        col = label_proposals[:, :, :].reshape(B, K, N, 1).repeat(1, 1, 1, N)
+        match_matrix = torch.eq(col, row).float()
+        det_label = (match_matrix.sum(dim=-1) > 0.0).float()*0.7
+        det_label = det_label + match_matrix[:, :, torch.arange(N), torch.arange(N)]
+        det_label = det_label.clamp(min=0.0, max=1.0)
+        det_label = det_label.masked_fill(torch.eq(label_proposals, 0), -100)
+
+        gloss_emb = self.gloss_embedding_layer_det(label_proposals)
+        B, K, N, C = gloss_emb.shape
+        gloss_emb = gloss_emb.reshape(B * K, N, C) + self.gloss_pos_emb_det[:, :N, :]
+        gloss_mask = label_proposals_mask # .reshape(B, K, N)
+        inp_mask = gloss_mask.reshape(B, K, 1, 1, N).repeat(1, 1, 8, N, 1).reshape(B * K * 8, N, N)
+        gloss_emb = self.gloss_encoder_det(
+            src=gloss_emb,
+            mask=inp_mask,
+            )
+        gloss_emb = gloss_emb +self.gloss_ca_pos_emb_det[:, :N, :]
+
+        sign_emb = ret["visual_feat"]
+        B, M, C = sign_emb.shape
+        sign_emb = sign_emb + self.sign_pos_emb_det[:, :M, :]
+        inp_mask = sign_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M)
+        sign_emb = self.sign_encoder_det(
+            src=sign_emb,
+            mask=inp_mask,
+            )
+        sign_emb = sign_emb+self.sign_ca_pos_emb_det[:, :M, :]
+        sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
+
+        inp_emb = torch.cat([gloss_emb, sign_emb], dim=1)
+        inp_mask = torch.cat([gloss_mask, sign_mask], dim=2)
+        inp_mask = inp_mask.reshape(B, K, 1, 1, M+N).repeat(1, 1, 8, M+N, 1).reshape(B * K * 8, M+N, M+N)
+
+        g_s_hs = self.gloss_sign_encoder_det(
+            src=inp_emb,
+            mask=inp_mask,
+            )
+        g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, M:, :]
+
+        det_logits = self.det_predictor(g_s_hs).reshape(B, K, N)
+        if not self.training:
+            ret_list = ret["ca_results"]
+            for batch_idx in range(B):
+                for beam_idx in range(K):
+                    ret_list[batch_idx][beam_idx]["det_label"] = det_label[batch_idx][
+                        beam_idx
+                    ].tolist()
+                    ret_list[batch_idx][beam_idx]["det"] = det_logits[batch_idx][
+                        beam_idx
+                    ].sigmoid().tolist()
+        else:
+            ret_list = []
+        return {
+            "det_logits": det_logits,
+            "det_label": det_label,
+            "ca_results": ret_list,
+        }
+
+    def forward_correct_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
+
+        lgt = ret["feat_len"]
+        sign_mask = torch.zeros(ret["attention_mask"].shape).to(
+            self.device, non_blocking=True
+        )
+        sign_mask = sign_mask.masked_fill(
+            torch.eq(ret["attention_mask"], 0), -float("inf")
+        )
+        ca_label = label_proposals[:, :1, :]
+        ca_label = ca_label.masked_fill(torch.eq(ca_label, 0), -100)
+        ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+        ca_label[:, :, 0] = -100
+
+        gloss_emb = self.gloss_embedding_layer_cor(label_proposals)
+        B, K, N, C = gloss_emb.shape
+        mask_prob = ret["det_logits"].sigmoid().detach()
+        mask_prob = mask_prob.reshape(B, K, N, 1)
+
+        ## Soft-Mask
+        gloss_emb = mask_prob * gloss_emb +  (1.0 - mask_prob) * self.mask_emb_cor.reshape(1, 1, 1, C).repeat(B, K, N, 1)
+
+        gloss_emb = gloss_emb.reshape(B * K, N, C) + self.gloss_pos_emb_cor[:, :N, :]
+        gloss_mask = label_proposals_mask # .reshape(B, K, N)
+        inp_mask = gloss_mask.reshape(B, K, 1, 1, N).repeat(1, 1, 8, N, 1).reshape(B * K * 8, N, N)
+        gloss_emb = self.gloss_encoder_cor(
+            src=gloss_emb,
+            mask=inp_mask,
+            )
+        gloss_emb = gloss_emb +self.gloss_ca_pos_emb_cor[:, :N, :]
+
+        sign_emb = ret["visual_feat"]
+        B, M, C = sign_emb.shape
+        sign_emb = sign_emb + self.sign_pos_emb_cor[:, :M, :]
+        inp_mask = sign_mask.reshape(B, 1, 1, M).repeat(1, 8, M, 1).reshape(B * 8, M, M)
+        sign_emb = self.sign_encoder_cor(
+            src=sign_emb,
+            mask=inp_mask,
+            )
+        sign_emb = sign_emb+self.sign_ca_pos_emb_cor[:, :M, :]
+        sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
+
+        inp_emb = torch.cat([gloss_emb, sign_emb], dim=1)
+        inp_mask = torch.cat([gloss_mask, sign_mask], dim=2)
+        inp_mask = inp_mask.reshape(B, K, 1, 1, M+N).repeat(1, 1, 8, M+N, 1).reshape(B * K * 8, M+N, M+N)
+
+        g_s_hs = self.gloss_sign_encoder_cor(
+            src=inp_emb,
+            mask=inp_mask,
+            )
+        g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, M:, :]
+
+        cor_logits = self.cor_predictor(g_s_hs)
+        if not self.training:
+            cor_score = cor_logits.softmax(-1)
+            ret_list = ret["ca_results"]
+            for batch_idx in range(B):
+                for beam_idx in range(K):
+                    cor_pred = self.decoder.i2g(cor_score[batch_idx, beam_idx, :, :])
+                    ret_list[batch_idx][beam_idx]["cor"] = cor_pred[
+                        beam_idx
+                    ]
+        else:
+            ret_list = []
+        return {
+            "cor_logits": cor_logits,
+            "cor_label": ca_label,
+            "ca_results": ret_list,
+        }
+
+
     def forward_ca_decoder(self, ret, label_proposals=None, label_proposals_mask=None):
         lgt = ret["feat_len"]
         sign_mask = torch.zeros(ret["attention_mask"].shape).to(
@@ -656,6 +844,25 @@ class SLRModel(nn.Module):
 
                 l = conf_loss + contrast_loss
 
+            elif k == "DetectDecoder":
+                
+                pred = ret_dict["det_logits"].reshape(-1)
+                target = ret_dict["det_label"].reshape(-1)
+                det_loss = self.loss["BCE"](pred[target!=-100], target[target!=-100])
+                det_acc = torch.eq(pred>0, target>0.5).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-det_loss"] = det_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-det_acc"] = det_acc.item()
+                l = det_loss
+
+            elif k == "CorrectDecoder":
+                target = ret_dict["cor_label"].reshape(-1)
+                pred = ret_dict["cor_logits"].reshape(target.shape[0], -1)
+                cor_loss = self.loss["CE"](pred, target)
+                cor_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-cor_loss"] = cor_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-cor_acc"] = cor_acc.item()
+                l = cor_loss
+
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
                 loss += l
@@ -668,6 +875,7 @@ class SLRModel(nn.Module):
         self.loss["distillation"] = SeqKD(T=8)
         self.loss["MSE"] = nn.MSELoss()
         self.loss["CE"] = nn.CrossEntropyLoss()
+        self.loss["BCE"] = nn.BCEWithLogitsLoss()
         weight = torch.ones(self.num_classes).to(self.device, non_blocking=True)
         weight[0] = 1 / 10.0
         self.loss["weighted-CE"] = nn.CrossEntropyLoss(weight=weight)
@@ -703,6 +911,22 @@ class SLRModel(nn.Module):
             )
             res.update(
                 self.forward_ca_decoder(res, label_proposals, label_proposals_mask)
+            )
+        if "DetectDecoder" in self.loss_weights:
+            label_proposals = label_proposals.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask.to(
+                self.device, non_blocking=True
+            )
+            res.update(
+                self.forward_detect_decoder(res, label_proposals, label_proposals_mask)
+            )
+        if "CorrectDecoder" in self.loss_weights:
+            label_proposals = label_proposals.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask.to(
+                self.device, non_blocking=True
+            )
+            res.update(
+                self.forward_correct_decoder(res, label_proposals, label_proposals_mask)
             )
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)

@@ -68,6 +68,17 @@ class Processor:
                         self.arg.evaluate_tool,
                     )
                     self.recoder.print_log("Dev WER: {:05.2f}%".format(dev_wer))
+                    test_wer = seq_eval(
+                        self.arg,
+                        self.data_loader["test"],
+                        self.model,
+                        "test",
+                        epoch,
+                        self.arg.work_dir,
+                        self.recoder,
+                        self.arg.evaluate_tool,
+                    )
+                    self.recoder.print_log("Test WER: {:05.2f}%".format(test_wer))
                     # train_wer = seq_eval(
                     #     self.arg,
                     #     self.data_loader["train_eval"],

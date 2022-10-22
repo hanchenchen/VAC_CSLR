@@ -43,6 +43,8 @@ class BaseFeeder(data.Dataset):
         self.ng = num_gloss
         self.prefix = prefix
         self.dict = gloss_dict
+        self.i2g_dict = {v[0]: k for k, v in gloss_dict.items()}
+        self.g2i_dict = {v: k for k, v in self.i2g_dict.items()}
         self.data_type = datatype
         self.feat_prefix = f"{prefix}/features/fullFrame-256x256px/{mode}"
         self.transform_mode = "train" if transform_mode else "test"
@@ -140,7 +142,7 @@ class BaseFeeder(data.Dataset):
         img_list = [np.asarray(img) for img in img_list]
         label_proposals = (
             [self.del_ins_sub(label_list, op_ratio=0)] 
-            # + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
+            + [self.del_ins_sub(label_list) for _ in range(self.proposal_num)]
             + [self.read_labels(_) for _ in random.choices(range(len(self)), k=self.proposal_num)]
             )
         return (
@@ -155,22 +157,26 @@ class BaseFeeder(data.Dataset):
         )
 
     def del_ins_sub(self, label_list, op_ratio=0.2):
+        origin_label = label_list.copy()
         label_list = label_list.copy()  # Warning: shallow copy
-        op_num = int(len(label_list) * op_ratio)
+        op_num = max(int(len(label_list) * op_ratio), 2)
         for op in torch.rand(op_num):
-            op = int(op * 3)
+            op = int(op * 4)
             if op == 0:  # ins
                 ins_idx = random.choice([i for i in range(len(label_list) + 1)])
-                ins_label = random.choice([i for i in range(len(self.dict))]) + 1
+                ins_label = random.choice(list(self.i2g_dict.keys()))
                 label_list = label_list[:ins_idx] + [ins_label] + label_list[ins_idx:]
             elif op == 1:  # sub
                 sub_idx = random.choice([i for i in range(len(label_list))])
-                sub_label = random.choice([i for i in range(len(self.dict))]) + 1
+                sub_label = random.choice(list(self.i2g_dict.keys()))
                 label_list[sub_idx] = sub_label
             elif op == 2:  # del
                 del_idx = random.choice([i for i in range(len(label_list))])
-                # label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
-                label_list[del_idx] = len(self.dict) + 1
+                label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
+            elif op == 3:  # exchange
+                a_idx = random.choice([i for i in range(len(label_list))])
+                b_idx = random.choice([i for i in range(len(label_list))])
+                label_list[a_idx], label_list[b_idx] = label_list[b_idx], label_list[a_idx]
         label_list = (
             [len(self.dict) + 1]
             + label_list
