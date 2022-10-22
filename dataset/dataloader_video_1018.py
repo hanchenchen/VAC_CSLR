@@ -171,8 +171,7 @@ class BaseFeeder(data.Dataset):
                 label_list[sub_idx] = sub_label
             elif op == 2:  # del
                 del_idx = random.choice([i for i in range(len(label_list))])
-                # label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
-                label_list[del_idx] = len(self.dict) + 1
+                label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
             elif op == 3:  # exchange
                 a_idx = random.choice([i for i in range(len(label_list))])
                 b_idx = random.choice([i for i in range(len(label_list))])
