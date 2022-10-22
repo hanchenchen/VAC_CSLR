@@ -158,7 +158,7 @@ class BaseFeeder(data.Dataset):
 
     def del_ins_sub(self, label_list, op_ratio=0.2):
         label_list = label_list.copy()  # Warning: shallow copy
-        op_num = int(len(label_list) * op_ratio)
+        op_num = max(int(len(label_list) * op_ratio), 2)
         for op in torch.rand(op_num):
             op = int(op * 4)
             if op == 0:  # ins
