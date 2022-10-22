@@ -449,7 +449,6 @@ class SLRModel(nn.Module):
             mask=inp_mask,
             )
         textual_gloss_emb = gloss_emb
-        gloss_emb = gloss_emb+self.gloss_ca_pos_emb[:, :N, :]
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
@@ -460,15 +459,20 @@ class SLRModel(nn.Module):
             mask=inp_mask,
             )
         textual_sign_emb = sign_emb
-        sign_emb = sign_emb+self.sign_ca_pos_emb[:, :M, :]
-
-        sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
-        sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
 
         textual_gloss_emb = textual_gloss_emb.reshape(B, K, N, C)[:, :, 0, :]
         textual_sign_emb = textual_sign_emb.reshape(B, 1, M, C)[:, :, 0, :]
 
         contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
+
+        gloss_emb = self.gloss_embedding_layer(label_proposals)
+        gloss_emb = gloss_emb.reshape(B * K, N, C) +self.gloss_ca_pos_emb[:, :N, :]
+
+        sign_emb = ret["visual_feat"]
+        B, M, C = sign_emb.shape
+        sign_emb = sign_emb+self.sign_ca_pos_emb[:, :M, :]
+        sign_emb = sign_emb.reshape(B, 1, M, C).repeat(1, K, 1, 1).reshape(B * K, M, C)
+        sign_mask = sign_mask.reshape(B, 1, M).repeat(1, K, 1)
 
         inp_emb = torch.cat([gloss_emb, sign_emb], dim=1)
         inp_mask = torch.cat([gloss_mask, sign_mask], dim=2)
