@@ -133,7 +133,10 @@ class SLRModel(nn.Module):
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
             self.gloss_sign_encoder_det = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
-            self.det_predictor = nn.Linear(hidden_size, 1)
+            self.det_predictor = nn.Sequential(nn.Linear(hidden_size, hidden_size, bias=False),
+                                        nn.BatchNorm1d(hidden_size),
+                                        nn.ReLU(inplace=True), # hidden layer
+                                        nn.Linear(hidden_size, 1))
 
         if "CorrectDecoder" in self.loss_weights:
             self.gloss_embedding_layer_cor = nn.Embedding(
@@ -529,7 +532,7 @@ class SLRModel(nn.Module):
             )
         g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, M:, :]
 
-        det_logits = self.det_predictor(g_s_hs).reshape(B, K, N)
+        det_logits = self.det_predictor(g_s_hs.reshape(B*K*N, C)).reshape(B, K, N)
         if not self.training:
             ret_list = ret["ca_results"]
             for batch_idx in range(B):
