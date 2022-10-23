@@ -596,11 +596,11 @@ class SLRModel(nn.Module):
 
         cor_logits = self.cor_predictor(g_s_hs)
         if not self.training:
-            cor_score = cor_logits.softmax(-1)
+            cor_score = torch.argmax(cor_logits, dim=1)
             ret_list = ret["ca_results"]
             for batch_idx in range(B):
+                cor_pred = self.decoder.i2g(cor_score[batch_idx, :, :])
                 for beam_idx in range(K):
-                    cor_pred = self.decoder.i2g(cor_score[batch_idx, beam_idx, :, :])
                     ret_list[batch_idx][beam_idx]["cor"] = cor_pred[
                         beam_idx
                     ]
@@ -893,6 +893,8 @@ class SLRModel(nn.Module):
         return_loss=False,
         phase="val",
     ):
+        import time
+        st = time.time()
         x = x.to(self.device, non_blocking=True)
         # label = label.to(self.device, non_blocking=True)
         res = self.forward_conv_layer(x, len_x)

@@ -26,7 +26,7 @@ loss_weights:
   LenPred: 1.0
   CADecoder: 1.0
   DetectDecoder: 1.0
-  CorrectDecoder: 1.0
+  # CorrectDecoder: 1.0
 #load_weights: ''
 
 optimizer_args:
