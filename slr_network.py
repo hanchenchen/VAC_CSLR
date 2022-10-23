@@ -484,10 +484,15 @@ class SLRModel(nn.Module):
         row = label_proposals[:, :1, :].reshape(B, 1, 1, N).repeat(1, K, N, 1)
         col = label_proposals[:, :, :].reshape(B, K, N, 1).repeat(1, 1, 1, N)
         match_matrix = torch.eq(col, row).float()
-        det_label = (match_matrix.sum(dim=-1) > 0.0).float()*0.7
-        det_label = det_label + match_matrix[:, :, torch.arange(N), torch.arange(N)]
-        det_label = det_label.clamp(min=0.0, max=1.0)
-        det_label = det_label.masked_fill(torch.eq(label_proposals, 0), -100)
+        valid_matrix = torch.ones_like(match_matrix)
+        valid_matrix.masked_fill_(label_proposals_mask[:, 0, None, :]!=0, 0.0)
+        valid_matrix.masked_fill_(label_proposals_mask[:, :, :, None]!=0, 0.0)
+        match_matrix.masked_fill_(valid_matrix==0, 0.0)
+
+        det_match_label = match_matrix[:, :, torch.arange(N), torch.arange(N)]
+        det_in_label = ((match_matrix.sum(dim=-1) > 0.0).float() - det_match_label).bool()
+        det_match_label = det_match_label.bool()
+        det_unmatch_label = (label_proposals_mask==0.0) & ~det_match_label & ~det_in_label
 
         gloss_emb = self.gloss_embedding_layer_det(label_proposals)
         B, K, N, C = gloss_emb.shape
@@ -527,7 +532,13 @@ class SLRModel(nn.Module):
             ret_list = ret["ca_results"]
             for batch_idx in range(B):
                 for beam_idx in range(K):
-                    ret_list[batch_idx][beam_idx]["det_label"] = det_label[batch_idx][
+                    ret_list[batch_idx][beam_idx]["det_match_label"] = det_match_label[batch_idx][
+                        beam_idx
+                    ].tolist()
+                    ret_list[batch_idx][beam_idx]["det_in_label"] = det_in_label[batch_idx][
+                        beam_idx
+                    ].tolist()
+                    ret_list[batch_idx][beam_idx]["det_unmatch_label"] = det_unmatch_label[batch_idx][
                         beam_idx
                     ].tolist()
                     ret_list[batch_idx][beam_idx]["det"] = det_logits[batch_idx][
@@ -537,7 +548,9 @@ class SLRModel(nn.Module):
             ret_list = []
         return {
             "det_logits": det_logits,
-            "det_label": det_label,
+            "det_match_label": det_match_label,
+            "det_unmatch_label": det_unmatch_label,
+            "det_in_label": det_in_label,
             "ca_results": ret_list,
         }
 
@@ -845,13 +858,19 @@ class SLRModel(nn.Module):
                 l = conf_loss + contrast_loss
 
             elif k == "DetectDecoder":
-                
-                pred = ret_dict["det_logits"].reshape(-1)
-                target = ret_dict["det_label"].reshape(-1)
-                det_loss = self.loss["BCE"](pred[target!=-100], target[target!=-100])
-                det_acc = torch.eq(pred>0, target>0.5).float().mean()
+                logits = ret_dict["det_logits"].sigmoid()
+                det_match_min_logits = torch.min(logits[ret_dict["det_match_label"]])
+                det_in_max_logits = torch.max(logits[ret_dict["det_in_label"]])
+                det_in_min_logits = torch.min(logits[ret_dict["det_in_label"]])
+                det_unmatched_max_logits = torch.max(logits[ret_dict["det_unmatch_label"]])
+                det_loss = max(
+                    det_in_max_logits - det_match_min_logits + 0.2, 0.0) + max(
+                        det_unmatched_max_logits - det_in_min_logits + 0.2, 0.0)
                 loss_kv[f"{phase}/Loss/{k}-det_loss"] = det_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-det_acc"] = det_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-det_match_min_logits"] = det_match_min_logits.item()
+                loss_kv[f"{phase}/Acc/{k}-det_in_max_logits"] = det_in_max_logits.item()
+                loss_kv[f"{phase}/Acc/{k}-det_in_min_logits"] = det_in_min_logits.item()
+                loss_kv[f"{phase}/Acc/{k}-det_unmatched_max_logits"] = det_unmatched_max_logits.item()
                 l = det_loss
 
             elif k == "CorrectDecoder":
