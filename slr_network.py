@@ -485,7 +485,7 @@ class SLRModel(nn.Module):
         col = label_proposals[:, :, :].reshape(B, K, N, 1).repeat(1, 1, 1, N)
         match_matrix = torch.eq(col, row).float()
         valid_matrix = torch.ones_like(match_matrix)
-        valid_matrix.masked_fill_(label_proposals_mask[:, 0, None, :]!=0, 0.0)
+        valid_matrix.masked_fill_(label_proposals_mask[:, :1, None, :]!=0, 0.0)
         valid_matrix.masked_fill_(label_proposals_mask[:, :, :, None]!=0, 0.0)
         match_matrix.masked_fill_(valid_matrix==0, 0.0)
 
@@ -493,6 +493,8 @@ class SLRModel(nn.Module):
         det_in_label = ((match_matrix.sum(dim=-1) > 0.0).float() - det_match_label).bool()
         det_match_label = det_match_label.bool()
         det_unmatch_label = (label_proposals_mask==0.0) & ~det_match_label & ~det_in_label
+        det_in_label[:, :, 0] = True
+        det_unmatch_label[:, :, 0] = True
 
         gloss_emb = self.gloss_embedding_layer_det(label_proposals)
         B, K, N, C = gloss_emb.shape
