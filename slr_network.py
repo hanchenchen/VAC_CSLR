@@ -496,8 +496,6 @@ class SLRModel(nn.Module):
         det_in_label = ((match_matrix.sum(dim=-1) > 0.0).float() - det_match_label).bool()
         det_match_label = det_match_label.bool()
         det_unmatch_label = (label_proposals_mask==0.0) & ~det_match_label & ~det_in_label
-        det_in_label[:, :, 0] = True
-        det_unmatch_label[:, :, 0] = True
 
         gloss_emb = self.gloss_embedding_layer_det(label_proposals)
         B, K, N, C = gloss_emb.shape
@@ -864,10 +862,20 @@ class SLRModel(nn.Module):
 
             elif k == "DetectDecoder":
                 logits = ret_dict["det_logits"].sigmoid()
-                det_match_min_logits = torch.min(logits[ret_dict["det_match_label"]])
-                det_in_max_logits = torch.max(logits[ret_dict["det_in_label"]])
-                det_in_min_logits = torch.min(logits[ret_dict["det_in_label"]])
-                det_unmatched_max_logits = torch.max(logits[ret_dict["det_unmatch_label"]])
+                if True in ret_dict["det_match_label"]:
+                    det_match_min_logits = torch.min(logits[ret_dict["det_match_label"]])
+                else:
+                    det_match_min_logits = 0.0
+                if True in ret_dict["det_in_label"]:
+                    det_in_max_logits = torch.max(logits[ret_dict["det_in_label"]])
+                    det_in_min_logits = torch.min(logits[ret_dict["det_in_label"]])
+                else:
+                    det_in_max_logits = 0.0
+                    det_in_min_logits = 0.0
+                if True in ret_dict["det_unmatch_label"]:
+                    det_unmatched_max_logits = torch.max(logits[ret_dict["det_unmatch_label"]])
+                else:
+                    det_unmatched_max_logits = 0.0
                 det_loss = max(
                     det_in_max_logits - det_match_min_logits + 0.2, 0.0) + max(
                         det_unmatched_max_logits - det_in_min_logits + 0.2, 0.0)
