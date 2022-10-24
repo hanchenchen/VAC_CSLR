@@ -1,4 +1,4 @@
-feeder: dataset.dataloader_video_1018.BaseFeeder
+feeder: dataset.dataloader_video.BaseFeeder
 phase: train
 dataset: phoenix14
 # dataset: phoenix14-si5
@@ -23,7 +23,7 @@ loss_weights:
   Dist: 10.0
   # Add
   SimsiamAlign: 1.0
-  LenPred: 1.0
+  # LenPred: 1.0
   CADecoder: 1.0
 #load_weights: ''
 
