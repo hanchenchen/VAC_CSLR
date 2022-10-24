@@ -79,6 +79,12 @@ class SLRModel(nn.Module):
             # hidden_dropout_prob=0.3,
             # attention_probs_dropout_prob=0.3,
         )
+        
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
+        self.tr_after_conv1d = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        self.tr_after_conv1d_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
+        torch.nn.init.normal_(self.tr_after_conv1d_pos_emb, std=0.02)
+
         if "DecoderReg" in self.loss_weights:
             self.reg_embed = nn.Linear(hidden_size, hidden_size, bias=True)
             self.reg_mask_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
@@ -335,6 +341,12 @@ class SLRModel(nn.Module):
         attention_mask = torch.ones(B, T).to(x)
         for b in range(batch):
             attention_mask[b][lgt[b] :] = 0
+
+        inp_mask = attention_mask.reshape(B, 1, 1, T).repeat(1, 8, T, 1).reshape(B * 8, T, T)
+        visual_feat = self.tr_after_conv1d(
+            src=visual_feat + self.tr_after_conv1d_pos_emb[:, :T, :],
+            mask=inp_mask,
+            ) + visual_feat
 
         conv_pred = (
             None
