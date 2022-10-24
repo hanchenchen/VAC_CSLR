@@ -654,7 +654,7 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
 
-                l = conf_loss + contrast_loss
+                l = conf_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
