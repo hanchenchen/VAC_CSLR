@@ -861,24 +861,25 @@ class SLRModel(nn.Module):
                 l = conf_loss + contrast_loss
 
             elif k == "DetectDecoder":
+                zero = torch.zeros(()).to(self.device, non_blocking=True)
                 logits = ret_dict["det_logits"].sigmoid()
                 if True in ret_dict["det_match_label"]:
                     det_match_min_logits = torch.min(logits[ret_dict["det_match_label"]])
                 else:
-                    det_match_min_logits = 0.0
+                    det_match_min_logits = zero
                 if True in ret_dict["det_in_label"]:
                     det_in_max_logits = torch.max(logits[ret_dict["det_in_label"]])
                     det_in_min_logits = torch.min(logits[ret_dict["det_in_label"]])
                 else:
-                    det_in_max_logits = 0.0
-                    det_in_min_logits = 0.0
+                    det_in_max_logits = zero
+                    det_in_min_logits = zero
                 if True in ret_dict["det_unmatch_label"]:
                     det_unmatched_max_logits = torch.max(logits[ret_dict["det_unmatch_label"]])
                 else:
-                    det_unmatched_max_logits = 0.0
+                    det_unmatched_max_logits = zero
                 det_loss = max(
-                    det_in_max_logits - det_match_min_logits + 0.2, 0.0) + max(
-                        det_unmatched_max_logits - det_in_min_logits + 0.2, 0.0)
+                    det_in_max_logits - det_match_min_logits + 0.2, zero) + max(
+                        det_unmatched_max_logits - det_in_min_logits + 0.2, zero)
                 loss_kv[f"{phase}/Loss/{k}-det_loss"] = det_loss.item()
                 loss_kv[f"{phase}/Acc/{k}-det_match_min_logits"] = det_match_min_logits.item()
                 loss_kv[f"{phase}/Acc/{k}-det_in_max_logits"] = det_in_max_logits.item()
