@@ -462,21 +462,21 @@ class SLRModel(nn.Module):
             # ca_unmatched_label = ca_label.masked_fill(torch.eq(ca_label, label_proposals), -100)
         
         else:
-            (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
-                ret["sequence_logits"],
-                lgt,
-                probs=False,
-                N_beams=self.proposal_num,
-                max_label_len=self.max_label_len,
-            )
-            label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
-            label_proposals_mask_ = label_proposals_mask_.to(
-                self.device, non_blocking=True
-            )
-            label_proposals = torch.cat([label_proposals, label_proposals_], dim=1)
-            label_proposals_mask = torch.cat(
-                [label_proposals_mask, label_proposals_mask_], dim=1
-            )
+            # (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
+            #     ret["sequence_logits"],
+            #     lgt,
+            #     probs=False,
+            #     N_beams=self.proposal_num,
+            #     max_label_len=self.max_label_len,
+            # )
+            # label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
+            # label_proposals_mask_ = label_proposals_mask_.to(
+            #     self.device, non_blocking=True
+            # )
+            # label_proposals = torch.cat([label_proposals, label_proposals_], dim=1)
+            # label_proposals_mask = torch.cat(
+            #     [label_proposals_mask, label_proposals_mask_], dim=1
+            # )
             ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
         ca_label = ca_label[:, :, 1:]
         
