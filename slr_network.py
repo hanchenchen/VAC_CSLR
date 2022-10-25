@@ -171,7 +171,7 @@ class SLRModel(nn.Module):
             encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=8, batch_first=True)
             self.gloss_sign_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
-            self.conf_predictor = nn.Linear(hidden_size, 1)
+            self.conf_predictor = nn.Linear(hidden_size*2, 1)
             
             # self.conv1d_1 = TemporalConv(
             #     input_size=2048,
@@ -478,7 +478,8 @@ class SLRModel(nn.Module):
             src=inp_emb,
             mask=inp_mask,
             )
-        g_s_hs = g_s_hs.reshape(B, K, M+N, C)[:, :, 0, :]
+        g_s_hs = g_s_hs.reshape(B, K, M+N, C)
+        g_s_hs = torch.cat([g_s_hs[:, :, 0, :], g_s_hs[:, :, N, :]], dim=2)
 
         conf_logits = self.conf_predictor(g_s_hs).reshape(B, K)
 
@@ -489,7 +490,7 @@ class SLRModel(nn.Module):
         conf_pred = (
             None
             if self.training
-            else self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), :])[0]
+            else self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), 1:])[0]
         )
         # pred = (
         #     None
