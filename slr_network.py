@@ -155,6 +155,9 @@ class SLRModel(nn.Module):
             self.gloss_embedding_layer = nn.Embedding(
                 num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
+            self.gloss_ca_embedding_layer = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
+            )
             self.gloss_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
             torch.nn.init.normal_(self.gloss_pos_emb, std=0.02)
             self.sign_pos_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
@@ -443,7 +446,38 @@ class SLRModel(nn.Module):
 
         ca_label = label_proposals[:, :1, :]
         ca_label = ca_label.masked_fill(torch.eq(ca_label, 0), -100)
-        ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+        if not self.training:
+            (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
+                ret["sequence_logits"],
+                lgt,
+                probs=False,
+                N_beams=self.proposal_num*2,
+                max_label_len=self.max_label_len,
+            )
+            label_proposals = label_proposals_.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask_.to(
+                self.device, non_blocking=True
+            )
+            ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
+            # ca_unmatched_label = ca_label.masked_fill(torch.eq(ca_label, label_proposals), -100)
+        
+        else:
+            (label_proposals_, label_proposals_mask_,) = self.decoder.BeamSearch_N(
+                ret["sequence_logits"],
+                lgt,
+                probs=False,
+                N_beams=self.proposal_num,
+                max_label_len=self.max_label_len,
+            )
+            label_proposals_ = label_proposals_.to(self.device, non_blocking=True)
+            label_proposals_mask_ = label_proposals_mask_.to(
+                self.device, non_blocking=True
+            )
+            label_proposals = torch.cat([label_proposals, label_proposals_], dim=1)
+            label_proposals_mask = torch.cat(
+                [label_proposals_mask, label_proposals_mask_], dim=1
+            )
+            ca_label = ca_label.repeat(1, label_proposals.shape[1], 1)
         ca_label = ca_label[:, :, 1:]
         
         gloss_emb = self.gloss_embedding_layer(label_proposals)
@@ -455,7 +489,7 @@ class SLRModel(nn.Module):
             src=gloss_emb,
             mask=inp_mask,
             )
-        textual_gloss_emb = gloss_emb
+        contextual_gloss_emb = gloss_emb
 
         sign_emb = ret["visual_feat"]
         B, M, C = sign_emb.shape
@@ -465,14 +499,21 @@ class SLRModel(nn.Module):
             src=sign_emb,
             mask=inp_mask,
             )
-        textual_sign_emb = sign_emb
+        contextual_sign_emb = sign_emb
 
-        textual_gloss_emb = textual_gloss_emb.reshape(B, K, N, C)[:, :, 0, :]
-        textual_sign_emb = textual_sign_emb.reshape(B, 1, M, C)[:, :, 0, :]
+        contextual_gloss_mask = torch.eq(gloss_mask, 0)[:, :, :, None]
+        contextual_gloss_emb = contextual_gloss_emb.reshape(B, K, N, C).masked_fill(
+            ~contextual_gloss_mask, 0.0
+        ).sum(dim=2)/contextual_gloss_mask.sum(dim=2)
 
-        contrast_logits = torch.mul(textual_gloss_emb, textual_sign_emb).sum(dim=-1)
+        contextual_sign_mask = torch.eq(sign_mask, 0)[:, None, :, None]
+        contextual_sign_emb = contextual_sign_emb.reshape(B, 1, M, C).masked_fill(
+            ~contextual_sign_mask, 0.0
+        ).sum(dim=2)/contextual_sign_mask.sum(dim=2)
 
-        gloss_emb = self.gloss_embedding_layer(label_proposals)
+        contrast_logits = torch.mul(contextual_gloss_emb, contextual_sign_emb).sum(dim=-1)
+
+        gloss_emb = self.gloss_ca_embedding_layer(label_proposals)
         gloss_emb = gloss_emb.reshape(B * K, N, C) +self.gloss_ca_pos_emb[:, :N, :]
 
         sign_emb = ret["visual_feat"]
@@ -500,7 +541,7 @@ class SLRModel(nn.Module):
         conf_pred = (
             None
             if self.training
-            else self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), :])[0]
+            else self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), torch.argmax(conf_logits, dim=1), 1:])[0]
         )
         # pred = (
         #     None
