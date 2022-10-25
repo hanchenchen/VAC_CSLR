@@ -154,7 +154,7 @@ class BaseFeeder(data.Dataset):
 
     def del_ins_sub(self, label_list, op_ratio=0.2):
         label_list = label_list.copy()  # Warning: shallow copy
-        op_num = int(len(label_list) * op_ratio)
+        op_num = max(int(len(label_list) * op_ratio), 2)
         for op in torch.rand(op_num):
             op = int(op * 3)
             if op == 0:  # ins
@@ -167,8 +167,11 @@ class BaseFeeder(data.Dataset):
                 label_list[sub_idx] = sub_label
             elif op == 2:  # del
                 del_idx = random.choice([i for i in range(len(label_list))])
-                # label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
-                label_list[del_idx] = len(self.dict) + 1
+                label_list = label_list[:del_idx] + label_list[del_idx + 1 :]
+            elif op == 3:  # exchange
+                a_idx = random.choice([i for i in range(len(label_list))])
+                b_idx = random.choice([i for i in range(len(label_list))])
+                label_list[a_idx], label_list[b_idx] = label_list[b_idx], label_list[a_idx]
         label_list = (
             [len(self.dict) + 1]
             + label_list

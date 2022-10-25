@@ -637,19 +637,29 @@ class SLRModel(nn.Module):
                 # loss_kv[f"{phase}/Acc/{k}-ce_unmatch_acc"] = ce_unmatch_acc.item()
                 
                 pred = ret_dict["conf_logits"]
+                B = pred.shape[0]
+                K = pred.shape[1]//2
+                pred = torch.cat([pred[:, :1+K], torch.cat([pred[:, :1], pred[:, K+1:]], dim=1)], dim=0)
                 target = (
                     torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
                 )
                 conf_loss = self.loss["CE"](pred, target)
-                conf_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                conf_hard_acc = torch.eq(torch.argmax(pred[:B], dim=1), target[:B]).float().mean()
+                conf_easy_acc = torch.eq(torch.argmax(pred[B:], dim=1), target[B:]).float().mean()
                 loss_kv[f"{phase}/Loss/{k}-conf_loss"] = conf_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-conf_acc"] = conf_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-conf_hard_acc"] = conf_hard_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-conf_easy_acc"] = conf_easy_acc.item()
 
                 pred = ret_dict["contrast_logits"]
+                B = pred.shape[0]
+                K = pred.shape[1]//2
+                pred = torch.cat([pred[:, :1+K], torch.cat([pred[:, :1], pred[:, K+1:]], dim=1)], dim=0)
                 contrast_loss = self.loss["CE"](pred, target)
-                contrast_acc = torch.eq(torch.argmax(pred, dim=1), target).float().mean()
+                contrast_hard_acc = torch.eq(torch.argmax(pred[:B], dim=1), target[:B]).float().mean()
+                contrast_easy_acc = torch.eq(torch.argmax(pred[B:], dim=1), target[B:]).float().mean()
                 loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-contrast_hard_acc"] = contrast_hard_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-contrast_easy_acc"] = contrast_easy_acc.item()
 
                 l = conf_loss + contrast_loss
 
