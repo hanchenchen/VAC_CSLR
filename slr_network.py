@@ -188,6 +188,14 @@ class SLRModel(nn.Module):
             #     use_bn=use_bn,
             #     num_classes=num_classes,
             # )
+        if "Conv1dCircle" in self.loss_weights:
+            self.gloss_weights = nn.Parameter(torch.zeros(self.num_classes, hidden_size))
+            torch.nn.init.normal_(self.gloss_weights, std=0.02)
+
+
+        if "LSTMCircle" in self.loss_weights:
+            self.gloss_weights = nn.Parameter(torch.zeros(self.num_classes, hidden_size))
+            torch.nn.init.normal_(self.gloss_weights, std=0.02)
 
         if weight_norm:
             self.classifier = NormLinear(hidden_size, self.num_classes)
@@ -532,6 +540,28 @@ class SLRModel(nn.Module):
             # "ca_unmatched_label": ca_unmatched_label
         }
 
+    def circle_consistency_loss(self, ret_dict, label, label_lgt, feat_name):
+        feat = ret_dict[feat_name]
+        lens = ret_dict["feat_len"]
+        B, T, C = feat.shape
+        l = torch.zeros(())
+        acc = torch.zeros(())
+        for i in range(B):
+            x = self.gloss_weights
+            y = feat[i][:lens[i]]
+            pos_idx = label[:label_lgt[i]]
+            label = label[label_lgt[i]:]
+            x_y = (self.gloss_weights @ y.T).softmax(dim=-1)
+            y_x = (y @ self.gloss_weights.T).softmax(dim=-1)
+            x_y = x_y[pos_idx, :]
+            y_x = y_x[:, pos_idx]
+            x_y_x = x_y @ y_x
+            L = pos_idx.shape[0]
+            target = torch.arange(L).long().to(self.device, non_blocking=True)
+            l = l + self.loss["CE"](x_y_x, target)
+            acc = acc + torch.eq(torch.argmax(x_y_x, dim=1), target).float().mean()
+        return l/B, acc/B
+
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
         loss = 0
         loss_kv = {}
@@ -655,6 +685,12 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Acc/{k}-contrast_acc"] = contrast_acc.item()
 
                 l = conf_loss + contrast_loss
+            elif k == "Conv1dCircle":
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, "visual_feat")
+                loss_kv[f"{phase}/Acc/{k}-Conv1dCircle_acc"] = acc.item()
+            elif k == "LSTMCircle":
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, "sequence_feat")
+                loss_kv[f"{phase}/Acc/{k}-LSTMCircle_acc"] = acc.item()
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):

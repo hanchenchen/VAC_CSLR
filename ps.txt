@@ -1,0 +1,25 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.0  18520  3420 pts/0    Ss+  Oct17   0:00 /bin/bash
+root          16  0.0  0.0  18516  3564 pts/1    Ss   Oct18   0:00 /bin/bash
+root     1711914  0.0  0.1 5578916 1096460 pts/1 Sl   02:07   0:01 python -m torch.distributed.launch --nproc_per_node=2 --master_port=1211 main.py --config configs/1002-02-conv-ctc-00.yaml --device 0,1 --batch-size 1 --work-dir work-dir/dist-gpu=2xbs=1-train/1022-35-no-overlap-34/
+root     1711919  102  1.1 109427576 11770484 pts/1 Rl 02:07 110:01 /opt/conda/bin/python -u main.py --local_rank=0 --config configs/1002-02-conv-ctc-00.yaml --device 0,1 --batch-size 1 --work-dir work-dir/dist-gpu=2xbs=1-train/1022-35-no-overlap-34/
+root     1711920  103  1.0 105713336 11223076 pts/1 Rl 02:07 110:48 /opt/conda/bin/python -u main.py --local_rank=1 --config configs/1002-02-conv-ctc-00.yaml --device 0,1 --batch-size 1 --work-dir work-dir/dist-gpu=2xbs=1-train/1022-35-no-overlap-34/
+root     1712451  2.5  0.0 2027132 126936 ?      Ssl  02:07   2:47 wandb-service(2-1711919-s-57939)
+root     1712507  0.0  0.0  23476 10932 pts/1    S    02:08   0:00 /opt/conda/bin/python -c from multiprocessing.semaphore_tracker import main;main(60)
+root     1712512  0.0  0.0  23476 10932 pts/1    S    02:08   0:00 /opt/conda/bin/python -c from multiprocessing.semaphore_tracker import main;main(62)
+root     1753980  103  1.0 106260976 10980548 pts/1 Rl 02:50  67:08 /opt/conda/bin/python -u main.py --local_rank=1 --config configs/1002-02-conv-ctc-00.yaml --device 0,1 --batch-size 1 --work-dir work-dir/dist-gpu=2xbs=1-train/1022-36-add-tr-branch-after-conv1d-35/
+root     1754567  0.0  0.0  23476 11068 pts/1    S    02:50   0:00 /opt/conda/bin/python -c from multiprocessing.semaphore_tracker import main;main(60)
+root     1846000 47.2  0.1 6477108 1705828 pts/1 Rl   03:46   4:14 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=67) --multiprocessing-fork
+root     1846332 46.5  0.1 6171236 1423124 pts/1 Rl   03:46   4:09 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=70) --multiprocessing-fork
+root     1846638 47.2  0.1 6146936 1400876 pts/1 Sl   03:46   4:12 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=73) --multiprocessing-fork
+root     1846642  0.0  0.0      0     0 pts/1    Z    03:46   0:00 [sh] <defunct>
+root     1846903 47.4  0.1 6174476 1427120 pts/1 Sl   03:46   4:12 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=76) --multiprocessing-fork
+root     1847177 48.0  0.1 6337512 1590804 pts/1 Rl   03:46   4:11 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=63, pipe_handle=69) --multiprocessing-fork
+root     1847438 47.1  0.1 6182412 1435796 pts/1 Rl   03:46   4:06 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=63, pipe_handle=72) --multiprocessing-fork
+root     1847699 46.7  0.1 6186904 1439724 pts/1 Sl   03:46   4:02 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=63, pipe_handle=75) --multiprocessing-fork
+root     1847960 48.2  0.1 6220664 1474472 pts/1 Sl   03:46   4:09 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=63, pipe_handle=79) --multiprocessing-fork
+root     1864308 44.0  0.1 6181872 1435452 pts/1 Sl   03:50   2:11 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=67) --multiprocessing-fork
+root     1864644 42.5  0.1 6146636 1400228 pts/1 Sl   03:50   2:06 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=70) --multiprocessing-fork
+root     1864950 42.8  0.1 6193952 1446484 pts/1 Sl   03:50   2:05 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=73) --multiprocessing-fork
+root     1865211 43.2  0.1 6136068 1388816 pts/1 Sl   03:50   2:05 /opt/conda/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=61, pipe_handle=76) --multiprocessing-fork
+root     1866546  0.0  0.0  34416  2968 pts/1    R+   03:55   0:00 ps aux
