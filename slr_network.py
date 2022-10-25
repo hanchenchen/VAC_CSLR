@@ -192,7 +192,6 @@ class SLRModel(nn.Module):
             self.gloss_weights = nn.Parameter(torch.zeros(self.num_classes, hidden_size))
             torch.nn.init.normal_(self.gloss_weights, std=0.02)
 
-
         if "LSTMCircle" in self.loss_weights:
             self.gloss_weights = nn.Parameter(torch.zeros(self.num_classes, hidden_size))
             torch.nn.init.normal_(self.gloss_weights, std=0.02)
@@ -540,8 +539,7 @@ class SLRModel(nn.Module):
             # "ca_unmatched_label": ca_unmatched_label
         }
 
-    def circle_consistency_loss(self, ret_dict, label, label_lgt, feat_name):
-        feat = ret_dict[feat_name]
+    def circle_consistency_loss(self, ret_dict, label, label_lgt, feat):
         lens = ret_dict["feat_len"]
         B, T, C = feat.shape
         l = torch.zeros(())
@@ -686,10 +684,10 @@ class SLRModel(nn.Module):
 
                 l = conf_loss + contrast_loss
             elif k == "Conv1dCircle":
-                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, "visual_feat")
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, ret_dict["visual_feat"])
                 loss_kv[f"{phase}/Acc/{k}-Conv1dCircle_acc"] = acc.item()
             elif k == "LSTMCircle":
-                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, "sequence_feat")
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, ret_dict["sequence_feat"].permute(1, 0, 2))
                 loss_kv[f"{phase}/Acc/{k}-LSTMCircle_acc"] = acc.item()
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
