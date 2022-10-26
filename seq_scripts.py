@@ -63,6 +63,7 @@ def seq_train(loader, model, optimizer, epoch_idx, recoder):
             label_proposals_mask=label_proposals_mask,
             return_loss=True,
             phase="Train",
+            epoch_idx=epoch_idx,
         )
         if np.isinf(loss.item()) or np.isnan(loss.item()):
             print(data[-1])
@@ -141,6 +142,7 @@ def seq_eval(
                 label_proposals=label_proposals,
                 label_proposals_mask=label_proposals_mask,
                 phase="Val",
+                work_dir=work_dir,
             )
         for k, v in reduce_loss_dict(loss_kv, phase="Val").items():
             loss_kv_dict[k].append(v)

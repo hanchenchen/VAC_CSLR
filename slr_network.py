@@ -1,9 +1,14 @@
+import os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from transformers import BertConfig, BertModel
+import numpy as np
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
 
 import utils
 from modules import BiLSTMLayer, TemporalConv
@@ -45,6 +50,7 @@ class SLRModel(nn.Module):
         max_label_len=30,
     ):
         super(SLRModel, self).__init__()
+        self.epoch_idx = 0
         self.device = torch.device("cuda")
         self.decoder = None
         self.loss = dict()
@@ -682,6 +688,52 @@ class SLRModel(nn.Module):
             "ca_results": ret_list,
         }
 
+    def confusion_matrix(self, res, x_labels=None, y_labels=None, save_path=''):
+        res = res.cpu().numpy()
+        df = pd.DataFrame(res, index=x_labels, columns=y_labels)
+        sns.heatmap(df)
+        # sns.heatmap(df, annot=True, fmt=".2f")
+        if save_path:
+            plt.savefig(save_path)
+        plt.clf()
+
+    def circle_consistency_loss(self, ret_dict, label, label_lgt, feat, phase='Train'):
+        logits = self.classifier(feat)
+        B, T, C = logits.shape
+
+        lens = ret_dict["feat_len"]
+        mask = ret_dict["attention_mask"]
+        cross_sign_logits = logits.masked_fill(mask[:, :, None]!=1, float('-inf')).reshape(B*T, C)
+        cross_sign_logits = cross_sign_logits.softmax(dim=0).reshape(B, T, C)
+
+        cross_gloss_logits = logits.softmax(dim=-1)
+
+        
+        l = torch.zeros(())
+        acc = torch.zeros(())
+        for i in range(B):
+            valid_cls = label[:label_lgt[i]]
+            label = label[label_lgt[i]:]
+            t_c = cross_gloss_logits[i, :lens[i], valid_cls]
+            c_t = cross_sign_logits[i, :lens[i], valid_cls].permute(1, 0)
+
+            t_c_t = t_c @ c_t
+            L = t_c_t.shape[0]
+            target = torch.arange(L).long().to(self.device, non_blocking=True)
+
+            l = l + self.loss["CE"](t_c_t, target)
+            acc = acc + torch.eq(torch.argmax(t_c_t, dim=1), target).float().mean()
+
+            if phase != "Train":
+                gt = self.decoder.i2g(valid_cls[None, :])[0].split(' ')
+                save_path = f"{self.work_dir}epoch_{self.epoch_idx}_result/"
+                if not os.path.exists(save_path):
+                    os.makedirs(save_path)
+                if not os.path.exists(save_path+"t_c.jpg"):
+                    self.confusion_matrix(t_c, x_labels=None, y_labels=gt, save_path=save_path+"t_c.jpg")
+                    self.confusion_matrix(c_t, x_labels=gt, y_labels=None, save_path=save_path+"c_t.jpg")
+        return l/B, acc/B
+
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
         loss = 0
         loss_kv = {}
@@ -849,6 +901,12 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Acc/{k}-hn_acc"] = hn_acc.item()
                 loss_kv[f"{phase}/Acc/{k}-en_acc"] = en_acc.item()
                 l = hn_loss + en_loss
+            elif k == "Conv1dCircle":
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, ret_dict["visual_feat"], phase)
+                loss_kv[f"{phase}/Acc/{k}-Conv1dCircle_acc"] = acc.item()
+            elif k == "LSTMCircle":
+                l, acc = self.circle_consistency_loss(ret_dict, label, label_lgt, ret_dict["sequence_feat"].permute(1, 0, 2), phase)
+                loss_kv[f"{phase}/Acc/{k}-LSTMCircle_acc"] = acc.item()
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
@@ -878,7 +936,13 @@ class SLRModel(nn.Module):
         label_proposals_mask=None,
         return_loss=False,
         phase="val",
+        epoch_idx=-1,
+        work_dir=''
     ):
+        if epoch_idx > 0:
+            self.epoch_idx = epoch_idx
+        if work_dir:
+            self.work_dir = work_dir
         x = x.to(self.device, non_blocking=True)
         # label = label.to(self.device, non_blocking=True)
         res = self.forward_conv_layer(x, len_x)

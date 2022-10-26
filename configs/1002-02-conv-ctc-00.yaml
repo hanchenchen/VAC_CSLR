@@ -26,7 +26,8 @@ loss_weights:
   # LenPred: 1.0
   # CADecoder: 1.0
   SignGlossContrast: 1.0
-  LSTMAlign: 1.0
+  # LSTMAlign: 1.0
+  LSTMCircle: 1.0
 #load_weights: ''
 
 optimizer_args:
