@@ -136,6 +136,21 @@ class SLRModel(nn.Module):
             self.en_scale = nn.Parameter(torch.zeros(()))
             self.hn_scale = nn.Parameter(torch.zeros(()))
 
+        if "LSTMAlign" in self.loss_weights:
+            self.share_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.la_gloss_embedding_layer = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
+            )
+            self.la_en_scale = nn.Parameter(torch.zeros(()))
+            self.la_hn_scale = nn.Parameter(torch.zeros(()))
+
         if "CADecoder" in self.loss_weights:
             # self.pos_emb = nn.Parameter(torch.zeros(1, self.max_label_len, hidden_size))
             # self.pos_kv_emb = nn.Parameter(torch.zeros(1, 200, hidden_size))
@@ -552,6 +567,62 @@ class SLRModel(nn.Module):
             # "ca_unmatched_label": ca_unmatched_label
         }
 
+    def forward_lstm_align(self, ret, label_proposals=None, label_proposals_mask=None):
+
+        sign_len = ret["feat_len"]
+        x = ret["visual_feat"]
+        sign_feat = self.share_encoder(x.permute(1, 0, 2), sign_len)
+        sign_feat = sign_feat["hidden"].mean(dim=0) # L, B, C -> B, C
+        
+        gloss_len = (label_proposals_mask==0).float().sum(dim=-1)
+        gloss_emb = self.la_gloss_embedding_layer(label_proposals)
+        B, K, N, C = gloss_emb.shape
+        gloss_len = gloss_len.reshape(B*K)
+        gloss_emb = gloss_emb.reshape(B*K, N, C)
+        
+        gloss_feat = self.share_encoder(gloss_emb.permute(1, 0, 2), gloss_len.cpu().int(), enforce_sorted=False)
+        gloss_feat = gloss_feat["hidden"].mean(dim=0)
+
+        sign_feat = sign_feat.reshape(B, 1, C)
+        gloss_feat = gloss_feat.reshape(B, K, C)
+        logits = torch.mul(gloss_feat, sign_feat).sum(dim=-1)
+
+        with torch.no_grad():
+            if not self.training:
+                score = logits.softmax(-1)
+                pred_idx = torch.argmax(score, dim=1)
+                label_proposals_mask_w_max_conf = label_proposals_mask[
+                    torch.arange(B), pred_idx, 1:
+                ]
+                pred = self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), pred_idx, 1:])[0]
+
+                gt = self.decoder.i2g(label_proposals[:, 0, 1:])
+                if "ca_results" in ret:
+                    ret_list = ret["ca_results"]
+                else:
+                    ret_list = [{} for batch_idx in range(B)]
+                for batch_idx in range(B):
+                    ret_list[batch_idx]["gt"] = gt[batch_idx]
+                    inp = self.decoder.i2g(label_proposals[batch_idx, :, 1:])
+                    for beam_idx in range(K):
+                        if beam_idx not in ret_list[batch_idx]:
+                            ret_list[batch_idx][beam_idx] = {}
+                        # ret_list[batch_idx][beam_idx]["inp_"] = inp[beam_idx]
+                        ret_list[batch_idx][beam_idx]["lstm_align_score"] = score[batch_idx][
+                            beam_idx
+                        ].item()
+                        ret_list[batch_idx][beam_idx]["lstm_align_logit"] = logits[batch_idx][
+                            beam_idx
+                        ].item()
+            else:
+                pred = None
+                ret_list = []
+        return {
+            "lstm_align_logit": logits,
+            "lstm_align_pred": pred,
+            "ca_results": ret_list,
+        }
+
     def forward_contrast(self, ret, label_proposals=None, label_proposals_mask=None):
         sign_len = ret["feat_len"]
         x = ret["visual_feat"]
@@ -602,6 +673,10 @@ class SLRModel(nn.Module):
                 pred = None
                 ret_list = []
         return {
+            # "sign_feat": sign_feat, 
+            # "gloss_feat": gloss_feat,
+            # "sign_len": sign_len,
+            # "gloss_len": gloss_len,
             "contrast_logits": contrast_logits,
             "contrast_pred": pred,
             "ca_results": ret_list,
@@ -752,10 +827,27 @@ class SLRModel(nn.Module):
                 en_loss = self.loss["CE"](en_pred, target)
                 contrast_hn_acc = torch.eq(torch.argmax(hn_pred[:B], dim=1), target[:B]).float().mean()
                 contrast_en_acc = torch.eq(torch.argmax(en_pred[B:], dim=1), target[B:]).float().mean()
-                loss_kv[f"{phase}/Loss/{k}-contrast_hn_loss"] = hn_loss.item()
-                loss_kv[f"{phase}/Loss/{k}-contrast_en_loss"] = en_loss.item()
-                loss_kv[f"{phase}/Acc/{k}-contrast_hn_acc"] = contrast_hn_acc.item()
-                loss_kv[f"{phase}/Acc/{k}-contrast_en_acc"] = contrast_en_acc.item()
+                loss_kv[f"{phase}/Loss/{k}-hn_loss"] = hn_loss.item()
+                loss_kv[f"{phase}/Loss/{k}-en_loss"] = en_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-hn_acc"] = contrast_hn_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-en_acc"] = contrast_en_acc.item()
+                l = hn_loss + en_loss
+
+            elif k == "LSTMAlign":
+                pred = ret_dict["lstm_align_logit"]
+                B = pred.shape[0]
+                K = pred.shape[1]//2
+                target = torch.zeros(B).long().to(self.device, non_blocking=True)
+                hn_pred = pred[:, :1+K] * self.la_hn_scale.exp()
+                en_pred = torch.cat([pred[:, :1], pred[:, K+1:]], dim=1) * self.la_en_scale.exp()
+                hn_loss = self.loss["CE"](hn_pred, target)
+                en_loss = self.loss["CE"](en_pred, target)
+                hn_acc = torch.eq(torch.argmax(hn_pred[:B], dim=1), target[:B]).float().mean()
+                en_acc = torch.eq(torch.argmax(en_pred[B:], dim=1), target[B:]).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-hn_loss"] = hn_loss.item()
+                loss_kv[f"{phase}/Loss/{k}-en_loss"] = en_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-hn_acc"] = hn_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-en_acc"] = en_acc.item()
                 l = hn_loss + en_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
@@ -813,6 +905,14 @@ class SLRModel(nn.Module):
             )
             res.update(
                 self.forward_contrast(res, label_proposals, label_proposals_mask)
+            )
+        if "LSTMAlign" in self.loss_weights:
+            label_proposals = label_proposals.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask.to(
+                self.device, non_blocking=True
+            )
+            res.update(
+                self.forward_lstm_align(res, label_proposals, label_proposals_mask)
             )
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
