@@ -156,7 +156,7 @@ class BaseFeeder(data.Dataset):
         label_list = label_list.copy()  # Warning: shallow copy
         op_num = max(int(len(label_list) * op_ratio), 2)
         for op in torch.rand(op_num):
-            op = int(op * 3)
+            op = int(op * 4)
             if op == 0:  # ins
                 ins_idx = random.choice([i for i in range(len(label_list) + 1)])
                 ins_label = random.choice([i for i in range(len(self.dict))]) + 1

@@ -36,7 +36,7 @@ class BiLSTMLayer(nn.Module):
         #     if name[:6] == 'weight':
         #         nn.init.orthogonal_(param)
 
-    def forward(self, src_feats, src_lens, hidden=None):
+    def forward(self, src_feats, src_lens, hidden=None, enforce_sorted=True):
         """
         Args:
             - src_feats: (max_src_len, batch_size, D)
@@ -46,7 +46,7 @@ class BiLSTMLayer(nn.Module):
             - hidden : (num_layers, batch_size, hidden_size * num_directions)
         """
         # (max_src_len, batch_size, D)
-        packed_emb = nn.utils.rnn.pack_padded_sequence(src_feats, src_lens)
+        packed_emb = nn.utils.rnn.pack_padded_sequence(src_feats, src_lens, enforce_sorted=enforce_sorted)
 
         # rnn(gru) returns:
         # - packed_outputs: shape same as packed_emb

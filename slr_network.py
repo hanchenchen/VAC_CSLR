@@ -36,7 +36,7 @@ class SLRModel(nn.Module):
         c2d_type,
         conv_type,
         use_bn=False,
-        hidden_size=2048,
+        hidden_size=512,
         gloss_dict=None,
         loss_weights=None,
         weight_norm=True,
@@ -56,7 +56,7 @@ class SLRModel(nn.Module):
         self.conv2d = getattr(models, c2d_type)(pretrained=True)
         self.conv2d.fc = nn.Identity()
         self.conv1d = TemporalConv(
-            input_size=2048,
+            input_size=hidden_size,
             hidden_size=hidden_size,
             conv_type=conv_type,
             use_bn=use_bn,
@@ -111,6 +111,27 @@ class SLRModel(nn.Module):
             self.len_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 4, 1),
                 nn.Sigmoid(),
+            )
+
+        if "SignGlossContrast" in self.loss_weights:
+            self.sign_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.gloss_encoder = BiLSTMLayer(
+                rnn_type="LSTM",
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                num_layers=2,
+                bidirectional=True,
+                dropout=0.3,
+            )
+            self.gloss_embedding_layer = nn.Embedding(
+                num_embeddings=self.num_classes + 2, embedding_dim=hidden_size
             )
 
         if "CADecoder" in self.loss_weights:
@@ -413,7 +434,7 @@ class SLRModel(nn.Module):
             encoded_len_hs = self.len_model(x.permute(1, 0, 2), lgt)
             L, B, C = encoded_len_hs["hidden"].shape
             len_logits = self.len_predictor(
-                encoded_len_hs["hidden"].permute(1, 0, 2).reshape(B, -1)
+                encoded_len_hs["hidden"].permute(1, 0, 2).reshape(B, -1) # mean?
             )
         else:
             len_logits = None
@@ -527,6 +548,61 @@ class SLRModel(nn.Module):
             # "ca_label": ca_label,
             "ca_results": ret_list,
             # "ca_unmatched_label": ca_unmatched_label
+        }
+
+    def forward_contrast(self, ret, label_proposals=None, label_proposals_mask=None):
+        sign_len = ret["feat_len"]
+        x = ret["visual_feat"]
+        sign_feat = self.sign_encoder(x.permute(1, 0, 2), sign_len)
+        sign_feat = sign_feat["hidden"].mean(dim=0) # L, B, C -> B, C
+        
+        gloss_len = (label_proposals_mask==0).float().sum(dim=-1)
+        gloss_emb = self.gloss_embedding_layer(label_proposals)
+        B, K, N, C = gloss_emb.shape
+        gloss_len = gloss_len.reshape(B*K)
+        gloss_emb = gloss_emb.reshape(B*K, N, C)
+        
+        gloss_feat = self.gloss_encoder(gloss_emb.permute(1, 0, 2), gloss_len.cpu().int(), enforce_sorted=False)
+        gloss_feat = gloss_feat["hidden"].mean(dim=0)
+
+
+        sign_feat = sign_feat.reshape(B, 1, C)
+        gloss_feat = gloss_feat.reshape(B, K, C)
+        contrast_logits = torch.mul(gloss_feat, sign_feat).sum(dim=-1)
+
+        with torch.no_grad():
+            if not self.training:
+                score = contrast_logits.softmax(-1)
+                pred_idx = torch.argmax(score, dim=1)
+                label_proposals_mask_w_max_conf = label_proposals_mask[
+                    torch.arange(B), pred_idx, 1:
+                ]
+                pred = self.decoder.MaxDecodeCA(None, label_proposals_mask_w_max_conf, index_list=label_proposals[torch.arange(B), pred_idx, 1:])[0]
+
+                gt = self.decoder.i2g(label_proposals[:, 0, 1:])
+                if "ca_results" in ret:
+                    ret_list = ret["ca_results"]
+                else:
+                    ret_list = [{} for batch_idx in range(B)]
+                for batch_idx in range(B):
+                    ret_list[batch_idx]["gt"] = gt[batch_idx]
+                    inp = self.decoder.i2g(label_proposals[batch_idx, :, 1:])
+                    for beam_idx in range(K):
+                        ret_list[batch_idx][beam_idx] = {}
+                        ret_list[batch_idx][beam_idx]["inp_"] = inp[beam_idx]
+                        ret_list[batch_idx][beam_idx]["contrast_score"] = score[batch_idx][
+                            beam_idx
+                        ].item()
+                        ret_list[batch_idx][beam_idx]["contrast_logit"] = contrast_logits[batch_idx][
+                            beam_idx
+                        ].item()
+            else:
+                pred = None
+                ret_list = []
+        return {
+            "contrast_logits": contrast_logits,
+            "contrast_pred": pred,
+            "ca_results": ret_list,
         }
 
     def criterion_calculation(self, ret_dict, label, label_lgt, phase):
@@ -662,6 +738,22 @@ class SLRModel(nn.Module):
                 loss_kv[f"{phase}/Acc/{k}-contrast_easy_acc"] = contrast_easy_acc.item()
 
                 l = conf_loss + contrast_loss
+            elif k == "SignGlossContrast":
+
+                pred = ret_dict["contrast_logits"]
+                B = pred.shape[0]
+                K = pred.shape[1]//2
+                pred = torch.cat([pred[:, :1+K], torch.cat([pred[:, :1], pred[:, K+1:]], dim=1)], dim=0)
+                target = (
+                    torch.zeros(pred.shape[0]).long().to(self.device, non_blocking=True)
+                )
+                contrast_loss = self.loss["CE"](pred, target)
+                contrast_hard_acc = torch.eq(torch.argmax(pred[:B], dim=1), target[:B]).float().mean()
+                contrast_easy_acc = torch.eq(torch.argmax(pred[B:], dim=1), target[B:]).float().mean()
+                loss_kv[f"{phase}/Loss/{k}-contrast_loss"] = contrast_loss.item()
+                loss_kv[f"{phase}/Acc/{k}-contrast_hard_acc"] = contrast_hard_acc.item()
+                loss_kv[f"{phase}/Acc/{k}-contrast_easy_acc"] = contrast_easy_acc.item()
+                l = contrast_loss
 
             loss_kv[f"{phase}/Loss/{k}"] = l.item()
             if not (np.isinf(l.item()) or np.isnan(l.item())):
@@ -710,6 +802,14 @@ class SLRModel(nn.Module):
             )
             res.update(
                 self.forward_ca_decoder(res, label_proposals, label_proposals_mask)
+            )
+        if "SignGlossContrast" in self.loss_weights:
+            label_proposals = label_proposals.to(self.device, non_blocking=True)
+            label_proposals_mask = label_proposals_mask.to(
+                self.device, non_blocking=True
+            )
+            res.update(
+                self.forward_contrast(res, label_proposals, label_proposals_mask)
             )
         if return_loss:
             return self.criterion_calculation(res, label, label_lgt, phase=phase)
